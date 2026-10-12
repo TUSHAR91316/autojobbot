@@ -6,11 +6,15 @@ from backend.app.models.settings import JobPreferences
 
 def normalize_weights(prefs: JobPreferences) -> Dict[str, float]:
     """Normalize user configured weights so they sum up to 100%"""
-    w_skills = max(0.0, getattr(prefs, "weight_skills", 40.0))
-    w_title = max(0.0, getattr(prefs, "weight_title", 25.0))
-    w_exp = max(0.0, getattr(prefs, "weight_experience", 15.0))
-    w_loc = max(0.0, getattr(prefs, "weight_location", 10.0))
-    w_emp = max(0.0, getattr(prefs, "weight_employment_type", 10.0))
+    def _get_val(attr: str, default: float) -> float:
+        v = getattr(prefs, attr, None)
+        return float(v) if v is not None else default
+
+    w_skills = max(0.0, _get_val("weight_skills", 40.0))
+    w_title = max(0.0, _get_val("weight_title", 25.0))
+    w_exp = max(0.0, _get_val("weight_experience", 15.0))
+    w_loc = max(0.0, _get_val("weight_location", 10.0))
+    w_emp = max(0.0, _get_val("weight_employment_type", 10.0))
     
     total = w_skills + w_title + w_exp + w_loc + w_emp
     if total <= 0:
