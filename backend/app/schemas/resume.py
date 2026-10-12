@@ -13,6 +13,14 @@ class ResumeVersionCreate(ResumeVersionBase):
     pass
 
 
+class ResumePasteCreate(BaseModel):
+    label: str
+    target_categories: List[str] = []
+    is_primary: bool = False
+    file_type: str = "tex"  # tex, txt, md
+    content: str
+
+
 class ResumeVersionUpdate(BaseModel):
     label: Optional[str] = None
     target_categories: Optional[List[str]] = None

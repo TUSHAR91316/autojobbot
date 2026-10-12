@@ -1,0 +1,12 @@
+[2026-10-12 16:01:01,286] [INFO] [SESSION_START] Started automation session sess_20261012_103101 with target 5 applications, 1.0s delay (job_id=None, app_id=None)
+[2026-10-12 16:01:01,289] [INFO] [SESSION_PAUSE] Paused session sess_20261012_103101 (job_id=None, app_id=None)
+[2026-10-12 16:01:01,292] [INFO] [SESSION_RESUME] Resumed session sess_20261012_103101 (job_id=None, app_id=None)
+[2026-10-12 16:01:01,294] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_103101 (job_id=None, app_id=None)
+[2026-10-12 16:01:01,302] [INFO] Worker started for session sess_20261012_103101
+[2026-10-12 16:01:01,302] [INFO] [SESSION_END] Session sess_20261012_103101 finished. Processed: 0, Submitted: 0, Manual: 0, Failed: 0 (job_id=None, app_id=None)
+[2026-10-12 16:13:56,694] [INFO] [SESSION_START] Started automation session sess_20261012_104356 with target 5 applications, 1.0s delay (job_id=None, app_id=None)
+[2026-10-12 16:13:56,716] [INFO] [SESSION_PAUSE] Paused session sess_20261012_104356 (job_id=None, app_id=None)
+[2026-10-12 16:13:56,722] [INFO] [SESSION_RESUME] Resumed session sess_20261012_104356 (job_id=None, app_id=None)
+[2026-10-12 16:13:56,728] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_104356 (job_id=None, app_id=None)
+[2026-10-12 16:13:56,738] [INFO] Worker started for session sess_20261012_104356
+[2026-10-12 16:13:56,738] [INFO] [SESSION_END] Session sess_20261012_104356 finished. Processed: 0, Submitted: 0, Manual: 0, Failed: 0 (job_id=None, app_id=None)

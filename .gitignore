@@ -1,0 +1,31 @@
+# Environments
+backend/venv/
+.env
+
+# Dependencies & Build
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local databases, profiles, and runtime data
+data/*.db
+data/*.sqlite3
+data/browser_profile/
+data/screenshots/*.png
+
+# Candidate private files
+resumes/*
+!resumes/.gitkeep
+
+# Local logs
+logs/*
+!logs/.gitkeep
+
+# IDE & OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
