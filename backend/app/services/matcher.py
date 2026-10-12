@@ -46,8 +46,11 @@ def compute_skills_score(job_skills: List[str], candidate_skills: List[str], job
         target_skills = [s for s in cand_norm if re.search(r"\b" + re.escape(s) + r"\b", desc_lower)]
     
     if not target_skills:
-        return 75.0, list(cand_norm)[:5], []  # Neutral high baseline if no specific skills requested
-    
+        desc_l = (job_description or "").lower()
+        if any(k in desc_l for k in ["software", "develop", "engineer", "backend", "frontend", "fullstack", "python", "react", "typescript", "api", "coding"]):
+            return 50.0, list(cand_norm)[:3], []
+        return 0.0, [], []  # Unrelated role with 0 tech skills
+
     matched = [s for s in target_skills if s in cand_norm]
     missing = [s for s in target_skills if s not in cand_norm]
     
@@ -57,7 +60,7 @@ def compute_skills_score(job_skills: List[str], candidate_skills: List[str], job
 
 def compute_title_score(job_title: str, preferred_titles: List[str], candidate_headline: str) -> float:
     """Calculate title relevance score (0-100)"""
-    title_norm = job_title.lower()
+    title_norm = (job_title or "").lower()
     
     # Check exact substring
     for pref in preferred_titles:
@@ -75,15 +78,17 @@ def compute_title_score(job_title: str, preferred_titles: List[str], candidate_h
         if candidate_headline:
             pref_words.update(re.findall(r"\w+", candidate_headline.lower()))
     
-    if not pref_words:
-        return 70.0
-    
     common = title_words.intersection(pref_words)
     if common:
         overlap_ratio = len(common) / min(len(title_words), len(pref_words))
         return min(100.0, round(overlap_ratio * 100.0, 1))
     
-    return 30.0
+    # Check general engineering / developer tokens
+    tech_keywords = {"engineer", "developer", "programmer", "architect", "lead", "backend", "frontend", "fullstack", "devops", "cloud", "python", "react", "software", "tech", "web"}
+    if title_words.intersection(tech_keywords):
+        return 50.0
+
+    return 0.0  # Completely non-tech role gets 0 score
 
 
 def compute_experience_score(job_exp_years: float, candidate_years: float, job_level: str, candidate_level: str) -> float:
@@ -249,6 +254,11 @@ def evaluate_job_match(job_dict: Dict[str, Any], profile: CandidateProfile, pref
     if (job_exp - cand_exp) > 4.0:
         is_eligible = False
         ineligible_reasons.append(f"Experience requirement ({job_exp}y) exceeds profile ({cand_exp}y) by >4 years")
+        
+    # Check if role is completely non-tech / unrelated
+    if title_score == 0.0 and skills_score == 0.0:
+        is_eligible = False
+        ineligible_reasons.append("Field Mismatch: Role is unrelated to software engineering / developer background")
         
     eligibility_assessment = {
         "is_eligible": is_eligible,

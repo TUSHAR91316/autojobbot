@@ -12,7 +12,7 @@ class JobicyProvider(BaseJobProvider):
         return "jobicy"
 
     async def fetch_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        url = "https://jobicy.com/api/v2/remote-jobs?count=50"
+        url = "https://jobicy.com/api/v2/remote-jobs?count=50&industry=dev"
         headers = {
             "User-Agent": "ApplyPilot-LocalAssistant/1.0",
             "Accept": "application/json",

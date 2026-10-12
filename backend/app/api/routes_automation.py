@@ -1,5 +1,6 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from backend.app.services.task_manager import task_manager
 from backend.app.services.cover_letter import generate_truthful_cover_letter
 from backend.app.core.logging import log_activity
 from backend.app.automation.browser import browser_manager
-from backend.app.automation.simulator import execute_live_browser_apply
+from backend.app.automation.simulator import execute_live_browser_apply, execute_multi_tab_career_apply
 
 router = APIRouter(prefix="/automation", tags=["Automation Controls"])
 
@@ -23,6 +24,12 @@ class DirectUrlApplyRequest(BaseModel):
     url: str
     title: Optional[str] = "Job Position"
     company: Optional[str] = "Company"
+
+
+class MultiTabApplyRequest(BaseModel):
+    urls: List[str]
+    delay_seconds: float = 3.0
+    auto_submit: bool = True
 
 
 @router.get("/status")
@@ -330,6 +337,115 @@ async def apply_custom_url_in_browser(
         "message": result.get("message"),
         "steps_completed": steps,
         "screenshot": shot,
+    }
+
+
+@router.post("/browser/apply-multi-tab")
+async def apply_multi_tab_career_portals(
+    data: MultiTabApplyRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Launch visible desktop browser and open multiple tabs to apply across career websites.
+    Fills candidate profile details, attaches primary resume, handles screening questions,
+    and observes user-configured delay between tab executions.
+    """
+    valid_urls = [u.strip() for u in data.urls if u and u.strip()]
+    if not valid_urls:
+        raise HTTPException(status_code=400, detail="No valid URLs provided")
+
+    if len(valid_urls) > 15:
+        raise HTTPException(status_code=400, detail="Maximum 15 tabs allowed per multi-tab run")
+
+    delay = max(0.5, min(data.delay_seconds, 30.0))
+
+    profile = db.query(CandidateProfile).first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile is missing. Please save profile first.")
+
+    primary_resume = db.query(ResumeVersion).filter(ResumeVersion.is_primary == True).first()
+    if not primary_resume:
+        primary_resume = db.query(ResumeVersion).first()
+
+    resume_path = primary_resume.file_path if primary_resume else None
+
+    log_activity(
+        db, "ACTION", "BROWSER_MULTI_TAB_START",
+        f"Launching multi-tab browser apply across {len(valid_urls)} career URLs with {delay}s delay (Auto-Submit={data.auto_submit})"
+    )
+
+    cover_letter = (
+        f"Dear Hiring Team,\n\n"
+        f"I am excited to apply for this engineering opportunity. With over {int(profile.years_of_experience or 5)} years "
+        f"of experience building high-performance systems and full-stack applications, I am eager to contribute.\n\n"
+        f"Sincerely,\n{profile.full_name}"
+    )
+
+    result = await execute_multi_tab_career_apply(
+        urls=valid_urls,
+        profile=profile,
+        resume_path=resume_path,
+        cover_letter=cover_letter,
+        delay_seconds=delay,
+        auto_submit=data.auto_submit,
+    )
+
+    # Persist / record each application in DB
+    for tab in result.get("tab_results", []):
+        url = tab.get("url")
+        outcome = tab.get("outcome")
+        steps = tab.get("steps_completed", [])
+        shot = tab.get("screenshot", "")
+
+        job = db.query(JobListing).filter(JobListing.original_url == url).first()
+        if not job:
+            netloc = urlparse(url).netloc or "Career Portal"
+            comp_name = netloc.replace("www.", "").split(".")[0].capitalize()
+            job = JobListing(
+                title="Engineering Role",
+                company=comp_name,
+                original_url=url,
+                normalized_url=url,
+                source_platform="career_portal",
+                status="APPLIED" if outcome == "SUBMITTED" else "DISCOVERED",
+                match_score=92.0,
+            )
+            db.add(job)
+            db.commit()
+            db.refresh(job)
+
+        app = db.query(JobApplication).filter(JobApplication.job_id == job.id).first()
+        if not app:
+            app = JobApplication(
+                job_id=job.id,
+                status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.MANUAL_ACTION_REQUIRED.value,
+                last_action=f"Multi-Tab Apply: {tab.get('message', '')} ({len(steps)} steps)",
+                screenshot_path=shot,
+                applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
+                external_portal_url=url,
+            )
+            db.add(app)
+        else:
+            app.status = ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.MANUAL_ACTION_REQUIRED.value
+            app.last_action = f"Multi-Tab Apply: {tab.get('message', '')} ({len(steps)} steps)"
+            app.screenshot_path = shot
+            if outcome == "SUBMITTED":
+                app.applied_at = datetime.utcnow()
+                job.status = "APPLIED"
+        db.commit()
+
+    log_activity(
+        db, "SUCCESS" if result.get("completed") else "INFO", "BROWSER_MULTI_TAB_COMPLETE",
+        f"Completed multi-tab browser apply: {result.get('completed')}/{result.get('total_tabs')} tabs processed"
+    )
+
+    return {
+        "success": True,
+        "total_tabs": result.get("total_tabs"),
+        "completed": result.get("completed"),
+        "delay_seconds": delay,
+        "auto_submit": data.auto_submit,
+        "tab_results": result.get("tab_results", []),
     }
 
 

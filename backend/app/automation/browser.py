@@ -97,6 +97,15 @@ class BrowserManager:
             self.is_cdp_connected = True
             return self.active_page
 
+    async def new_tab(self) -> Page:
+        """Open and return a new browser tab in the persistent context."""
+        await self.get_or_launch_page(headless=False)
+        if not self.context:
+            raise RuntimeError("Browser context not available")
+        page = await self.context.new_page()
+        self.active_page = page
+        return page
+
     async def open_login_session(self, site: str = "linkedin") -> Dict[str, Any]:
         """
         Opens the visible desktop browser window specifically to let the user

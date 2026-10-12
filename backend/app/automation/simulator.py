@@ -60,9 +60,10 @@ async def _smart_click(page: Page, selectors: List[str]) -> bool:
 async def workflow_greenhouse(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     Dedicated workflow for Greenhouse boards (e.g. boards.greenhouse.io).
@@ -111,9 +112,12 @@ async def workflow_greenhouse(
             steps.append("greenhouse_cover_letter")
 
     # Submit button check
-    submit_selectors = ["#submit_app", "button[id*='submit']", "input[type='submit']", "button:has-text('Submit Application')"]
-    if await _smart_click(page, submit_selectors):
-        steps.append("submitted")
+    if auto_submit:
+        submit_selectors = ["#submit_app", "button[id*='submit']", "input[type='submit']", "button:has-text('Submit Application')"]
+        if await _smart_click(page, submit_selectors):
+            steps.append("submitted")
+    else:
+        steps.append("ready_for_review")
 
     return {"steps_completed": steps, "platform": "greenhouse"}
 
@@ -121,9 +125,10 @@ async def workflow_greenhouse(
 async def workflow_lever(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     Dedicated workflow for Lever application postings (e.g. jobs.lever.co).
@@ -172,9 +177,12 @@ async def workflow_lever(
         await _smart_fill(page, ["textarea[name='comments']", "textarea[placeholder*='Additional information']"], cover_letter)
 
     # Submit
-    submit_selectors = ["button#btn-submit", "button:has-text('Submit application')", "input[type='submit']"]
-    if await _smart_click(page, submit_selectors):
-        steps.append("submitted")
+    if auto_submit:
+        submit_selectors = ["button#btn-submit", "button:has-text('Submit application')", "input[type='submit']"]
+        if await _smart_click(page, submit_selectors):
+            steps.append("submitted")
+    else:
+        steps.append("ready_for_review")
 
     return {"steps_completed": steps, "platform": "lever"}
 
@@ -182,9 +190,10 @@ async def workflow_lever(
 async def workflow_linkedin_easy_apply(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     LinkedIn Easy Apply multi-step modal automation workflow.
@@ -232,9 +241,12 @@ async def workflow_linkedin_easy_apply(
         for sel in submit_selectors:
             sub = page.locator(sel).first
             if await sub.count() > 0 and await sub.is_visible():
-                await sub.click()
-                await page.wait_for_timeout(2000)
-                steps.append("submitted")
+                if auto_submit:
+                    await sub.click()
+                    await page.wait_for_timeout(2000)
+                    steps.append("submitted")
+                else:
+                    steps.append("ready_for_review")
                 return {"steps_completed": steps, "platform": "linkedin"}
 
         # Phone field
@@ -308,9 +320,10 @@ async def workflow_linkedin_easy_apply(
 async def workflow_indeed_apply(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     Indeed Apply Now workflow.
@@ -333,16 +346,19 @@ async def workflow_indeed_apply(
             break
 
     # Run generic filler for the form inside Indeed or opened page
-    res = await workflow_generic_form(page, profile, job, resume_path, cover_letter)
+    res = await workflow_generic_form(page, profile, job, resume_path, cover_letter, auto_submit=auto_submit)
     steps.extend(res.get("steps_completed", []))
 
-    submit_selectors = [
-        "button:has-text('Submit your application')",
-        "button:has-text('Submit')",
-        "button[type='submit']",
-    ]
-    if await _smart_click(page, submit_selectors):
-        steps.append("submitted")
+    if auto_submit:
+        submit_selectors = [
+            "button:has-text('Submit your application')",
+            "button:has-text('Submit')",
+            "button[type='submit']",
+        ]
+        if await _smart_click(page, submit_selectors):
+            steps.append("submitted")
+    else:
+        steps.append("ready_for_review")
 
     return {"steps_completed": steps, "platform": "indeed"}
 
@@ -350,9 +366,10 @@ async def workflow_indeed_apply(
 async def workflow_naukri_apply(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     Naukri.com (India) application workflow.
@@ -415,19 +432,22 @@ async def workflow_naukri_apply(
                 logger.warning(f"Naukri resume upload failed: {e}")
 
     # Confirm / Submit in modal
-    confirm_selectors = [
-        "button:has-text('Submit and Apply')",
-        "button:has-text('Apply Now')",
-        "button:has-text('Apply')",
-        "button:has-text('Submit')",
-        "button.apply-modal-btn",
-    ]
-    if await _smart_click(page, confirm_selectors):
-        steps.append("submitted")
+    if auto_submit:
+        confirm_selectors = [
+            "button:has-text('Submit and Apply')",
+            "button:has-text('Apply Now')",
+            "button:has-text('Apply')",
+            "button:has-text('Submit')",
+            "button.apply-modal-btn",
+        ]
+        if await _smart_click(page, confirm_selectors):
+            steps.append("submitted")
+        else:
+            # Fallback to generic filler if custom form
+            gen_res = await workflow_generic_form(page, profile, job, resume_path, cover_letter, auto_submit=auto_submit)
+            steps.extend(gen_res.get("steps_completed", []))
     else:
-        # Fallback to generic filler if custom form
-        gen_res = await workflow_generic_form(page, profile, job, resume_path, cover_letter)
-        steps.extend(gen_res.get("steps_completed", []))
+        steps.append("ready_for_review")
 
     return {"steps_completed": steps, "platform": "naukri"}
 
@@ -435,9 +455,10 @@ async def workflow_naukri_apply(
 async def workflow_generic_form(
     page: Page,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    auto_submit: bool = True,
 ) -> Dict[str, Any]:
     """
     Generic intelligent form filler for arbitrary job application portals.
@@ -445,6 +466,32 @@ async def workflow_generic_form(
     """
     steps = []
     logger.info("Executing Generic Form Filler workflow")
+
+    # 0. Check for initial "Apply" / "Apply for this job" / "Apply now" button and click it to reveal form
+    initial_apply_selectors = [
+        "a:has-text('Apply for this job')",
+        "button:has-text('Apply for this job')",
+        "a:has-text('Apply now')",
+        "button:has-text('Apply now')",
+        "button:has-text('Easy Apply')",
+        "button.apply-button",
+        "a.apply-button",
+        "button[data-qa='btn-apply']",
+        "a:has-text('Apply')",
+        "button:has-text('Apply')",
+        "span:has-text('Apply now')",
+    ]
+    for sel in initial_apply_selectors:
+        try:
+            loc = page.locator(sel).first
+            if await loc.count() > 0 and await loc.is_visible():
+                await loc.scroll_into_view_if_needed(timeout=2000)
+                await loc.click(timeout=3000)
+                await page.wait_for_timeout(1500)
+                steps.append("clicked_apply_button")
+                break
+        except Exception:
+            continue
 
     # Full Name
     name_selectors = [
@@ -554,6 +601,38 @@ async def workflow_generic_form(
         if await _smart_fill(page, cl_sel, cover_letter):
             steps.append("cover_letter")
 
+    # Screening questions: Experience, CTC / Salary, Notice Period
+    if profile.years_of_experience:
+        exp_sel = [
+            "input[name*='experience' i]",
+            "input[placeholder*='years of experience' i]",
+            "input[placeholder*='experience' i]",
+            "input[id*='experience' i]",
+        ]
+        if await _smart_fill(page, exp_sel, str(int(profile.years_of_experience))):
+            steps.append("experience")
+
+    salary_val = str(profile.salary_expectation_min or 2500000)
+    salary_sel = [
+        "input[name*='salary' i]",
+        "input[name*='ctc' i]",
+        "input[placeholder*='expected salary' i]",
+        "input[placeholder*='expected ctc' i]",
+        "input[placeholder*='ctc' i]",
+        "input[id*='salary' i]",
+    ]
+    if await _smart_fill(page, salary_sel, salary_val):
+        steps.append("expected_salary")
+
+    notice_sel = [
+        "input[name*='notice' i]",
+        "input[placeholder*='notice period' i]",
+        "input[placeholder*='notice' i]",
+        "input[id*='notice' i]",
+    ]
+    if await _smart_fill(page, notice_sel, "15 Days"):
+        steps.append("notice_period")
+
     # Resume File Upload
     if resume_path and Path(resume_path).exists():
         file_inputs = page.locator("input[type='file']")
@@ -565,16 +644,42 @@ async def workflow_generic_form(
             except Exception as e:
                 logger.warning(f"Resume upload failed: {e}")
 
+    # Checkbox consent / terms agreements
+    try:
+        checkboxes = page.locator("input[type='checkbox']")
+        cb_count = await checkboxes.count()
+        for ci in range(min(cb_count, 4)):
+            cb = checkboxes.nth(ci)
+            if await cb.is_visible() and not await cb.is_checked():
+                await cb.check()
+                steps.append(f"checkbox_{ci}_checked")
+    except Exception:
+        pass
+
+    # Radio button for work authorization / right to work
+    try:
+        auth_radios = page.locator("input[type='radio'][value*='yes' i], input[type='radio'][id*='yes' i]")
+        if await auth_radios.count() > 0 and await auth_radios.first.is_visible():
+            await auth_radios.first.check()
+            steps.append("work_auth_yes")
+    except Exception:
+        pass
+
     # Check for Submit button
-    submit_selectors = [
-        "button[type='submit']",
-        "input[type='submit']",
-        "button:has-text('Submit Application')",
-        "button:has-text('Submit')",
-        "button:has-text('Send Application')",
-    ]
-    if await _smart_click(page, submit_selectors):
-        steps.append("submitted")
+    if auto_submit:
+        submit_selectors = [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Submit Application')",
+            "button:has-text('Submit application')",
+            "button:has-text('Submit')",
+            "button:has-text('Send Application')",
+            "button:has-text('Send application')",
+        ]
+        if await _smart_click(page, submit_selectors):
+            steps.append("submitted")
+    else:
+        steps.append("ready_for_review")
 
     return {"steps_completed": steps, "platform": "generic"}
 
@@ -601,18 +706,20 @@ def _select_workflow_function(url: str, platform: str):
 async def execute_live_browser_apply(
     url: str,
     profile: CandidateProfile,
-    job: JobListing,
-    resume_path: Optional[str],
-    cover_letter: str,
+    job: Optional[JobListing] = None,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
     auto_submit: bool = True,
+    page: Optional[Page] = None,
 ) -> Dict[str, Any]:
     """
-    Core function that launches a visible Chromium browser window on the desktop,
-    navigates to the job URL, executes intelligent auto-fill, attaches resume,
+    Core function that launches or uses a visible Chromium browser window on the desktop,
+    navigates to the career website URL, executes intelligent auto-fill, attaches resume,
     and captures screenshots.
     """
-    logger.info(f"Opening visible browser to apply at: {url}")
-    page = await browser_manager.get_or_launch_page(headless=False)
+    logger.info(f"Applying in visible browser at: {url}")
+    if page is None:
+        page = await browser_manager.get_or_launch_page(headless=False)
     await page.bring_to_front()
 
     try:
@@ -640,6 +747,7 @@ async def execute_live_browser_apply(
             job=job,
             resume_path=resume_path,
             cover_letter=cover_letter,
+            auto_submit=auto_submit,
         )
 
         steps_done = res.get("steps_completed", [])
@@ -648,6 +756,9 @@ async def execute_live_browser_apply(
         if "submitted" in steps_done:
             outcome = "SUBMITTED"
             msg = f"Successfully filled application and clicked Submit ({len(steps_done)} steps)."
+        elif "ready_for_review" in steps_done or not auto_submit:
+            outcome = "PARTIAL_FILLED"
+            msg = f"Application fields filled & staged for review ({len(steps_done)} steps). Browser tab kept open."
         else:
             outcome = "PARTIAL_FILLED"
             msg = f"Filled application fields ({len(steps_done)} steps completed). Browser kept open for your review."
@@ -668,6 +779,90 @@ async def execute_live_browser_apply(
             "screenshot": shot,
             "steps_completed": [],
         }
+
+
+async def execute_multi_tab_career_apply(
+    urls: List[str],
+    profile: CandidateProfile,
+    resume_path: Optional[str] = None,
+    cover_letter: str = "",
+    delay_seconds: float = 3.0,
+    auto_submit: bool = True,
+) -> Dict[str, Any]:
+    """
+    Direct multi-tab browser auto-apply runner.
+    Opens separate browser tabs in Playwright Chromium on the user's desktop,
+    navigates to each career portal URL, clicks Apply, fills form fields with candidate
+    profile data, attaches active resume, submits (or holds for user review),
+    and applies a user-configured delay between each tab action.
+    """
+    cleaned_urls = [u.strip() for u in urls if u and u.strip()]
+    if not cleaned_urls:
+        return {"total_tabs": 0, "completed": 0, "delay_seconds": delay_seconds, "tab_results": []}
+
+    logger.info(f"Starting multi-tab career apply across {len(cleaned_urls)} URLs with {delay_seconds}s delay")
+
+    # Launch or get visible browser
+    initial_page = await browser_manager.get_or_launch_page(headless=False)
+
+    tab_results = []
+    for idx, raw_url in enumerate(cleaned_urls):
+        target_url = raw_url
+        if not target_url.startswith("http"):
+            target_url = "https://" + target_url
+
+        try:
+            # For the first URL, reuse initial page if blank/localhost, otherwise open new tab
+            if idx == 0 and initial_page and (initial_page.url in ["about:blank", "http://127.0.0.1:5173/"]):
+                current_page = initial_page
+            else:
+                current_page = await browser_manager.new_tab()
+
+            await current_page.bring_to_front()
+            logger.info(f"[Multi-Tab] Opening tab {idx + 1}/{len(cleaned_urls)}: {target_url}")
+
+            tab_res = await execute_live_browser_apply(
+                url=target_url,
+                profile=profile,
+                job=None,
+                resume_path=resume_path,
+                cover_letter=cover_letter,
+                auto_submit=auto_submit,
+                page=current_page,
+            )
+
+            tab_results.append({
+                "tab_index": idx + 1,
+                "url": target_url,
+                "outcome": tab_res.get("outcome", "UNKNOWN"),
+                "message": tab_res.get("message", ""),
+                "steps_completed": tab_res.get("steps_completed", []),
+                "screenshot": tab_res.get("screenshot", ""),
+            })
+
+            # User-configured delay between tabs
+            if idx < len(cleaned_urls) - 1 and delay_seconds > 0:
+                logger.info(f"[Multi-Tab] Waiting {delay_seconds}s user delay before opening next tab...")
+                await asyncio.sleep(delay_seconds)
+
+        except Exception as e:
+            logger.exception(f"[Multi-Tab] Error processing tab {idx + 1} ({target_url}): {e}")
+            tab_results.append({
+                "tab_index": idx + 1,
+                "url": target_url,
+                "outcome": "FAILED",
+                "message": f"Tab error: {str(e)}",
+                "steps_completed": [],
+                "screenshot": "",
+            })
+
+    return {
+        "total_tabs": len(cleaned_urls),
+        "completed": len(tab_results),
+        "delay_seconds": delay_seconds,
+        "auto_submit": auto_submit,
+        "tab_results": tab_results,
+    }
 
 
 async def process_application_workflow(

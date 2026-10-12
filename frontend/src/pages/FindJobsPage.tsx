@@ -19,8 +19,10 @@ import {
   X,
   Eye,
   Loader2,
+  Layers,
+  Clock,
 } from "lucide-react";
-import { useJobs, useAppMutations } from "../api/hooks";
+import { useJobs, useAppMutations, useProfile } from "../api/hooks";
 import { JobListing } from "../types";
 import { ScoreBreakdownModal } from "../components/jobs/ScoreBreakdownModal";
 import { JobImportModal } from "../components/jobs/JobImportModal";
@@ -37,6 +39,11 @@ export const FindJobsPage: React.FC = () => {
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobListing | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+  // Multi-Job Selection for Multi-Tab Apply
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
+  const [multiTabDelay, setMultiTabDelay] = useState<number>(3.0);
+  const [multiTabApplying, setMultiTabApplying] = useState<boolean>(false);
+
   // Quick Direct URL input state
   const [quickUrl, setQuickUrl] = useState("");
   const [applyingJobId, setApplyingJobId] = useState<number | null>(null);
@@ -49,6 +56,7 @@ export const FindJobsPage: React.FC = () => {
     screenshot?: string;
   } | null>(null);
 
+  const { data: profile } = useProfile();
   const { data: jobs = [], isLoading } = useJobs({
     search: search || undefined,
     company: company || undefined,
@@ -60,10 +68,68 @@ export const FindJobsPage: React.FC = () => {
 
   const {
     discoverJobs,
+    curateJobs,
     queueJob,
     applySingleJobInBrowser,
     applyCustomUrlInBrowser,
+    applyMultiTabInBrowser,
   } = useAppMutations();
+
+  const toggleJobSelection = (jobId: number) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.add(jobId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllEligibleJobs = () => {
+    const ids = jobs
+      .filter((j) => (j.eligibility_assessment?.is_eligible ?? true) && j.original_url)
+      .slice(0, 10)
+      .map((j) => j.id);
+    setSelectedJobIds(new Set(ids));
+  };
+
+  const handleApplySelectedMultiTab = async () => {
+    const selectedJobs = jobs.filter((j) => selectedJobIds.has(j.id) && j.original_url);
+    const urls = selectedJobs.map((j) => j.original_url);
+    if (urls.length === 0) return;
+
+    try {
+      setMultiTabApplying(true);
+      const res = await applyMultiTabInBrowser.mutateAsync({
+        urls,
+        delaySeconds: multiTabDelay,
+        autoSubmit: true,
+      });
+      setBrowserResultModal({
+        isOpen: true,
+        title: `Multi-Tab Browser Apply (${res.completed}/${res.total_tabs} Tabs Completed)`,
+        message: `Successfully processed ${res.completed} career portal tabs with ${res.delay_seconds}s user delay!`,
+        outcome: "SUBMITTED",
+        steps: res.tab_results.map(
+          (t: any) => `Tab ${t.tab_index}: ${t.outcome} (${t.steps_completed?.length || 0} fields filled)`
+        ),
+        screenshot: res.tab_results[0]?.screenshot,
+      });
+      setSelectedJobIds(new Set());
+    } catch (err: any) {
+      setBrowserResultModal({
+        isOpen: true,
+        title: "Multi-Tab Apply Error",
+        message: err.response?.data?.detail || err.message || "Failed to execute multi-tab apply",
+        outcome: "FAILED",
+        steps: [],
+      });
+    } finally {
+      setMultiTabApplying(false);
+    }
+  };
 
   const handleApplySingleJob = async (job: JobListing) => {
     try {
@@ -153,13 +219,42 @@ export const FindJobsPage: React.FC = () => {
           </a>
 
           <button
-            onClick={() => discoverJobs.mutate("all")}
-            disabled={discoverJobs.isPending}
-            className="fluent-button fluent-button-primary text-xs"
+            onClick={() => curateJobs.mutate()}
+            disabled={curateJobs.isPending}
+            className="fluent-button fluent-button-primary bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-0 text-xs shadow-sm font-semibold"
+            title="Fetch real tech listings strictly matching your resume skills and India location"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>{discoverJobs.isPending ? "Searching Feeds..." : "Discover New Jobs"}</span>
+            <span>{curateJobs.isPending ? "Curating Tech Jobs..." : "Curate by Resume"}</span>
           </button>
+
+          <button
+            onClick={() => discoverJobs.mutate("all")}
+            disabled={discoverJobs.isPending}
+            className="fluent-button fluent-button-secondary text-xs"
+          >
+            <span>{discoverJobs.isPending ? "Searching..." : "Discover More Feeds"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Resume Curation Context Banner */}
+      <div className="fluent-card p-3 bg-gradient-to-r from-emerald-500/10 via-surface to-surface border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-semibold text-text-primary">Curating against active resume: </span>
+            <span className="text-text-secondary font-medium">{profile?.headline || "Senior Software Engineer"}</span>
+            <span className="mx-2 text-border">|</span>
+            <span className="text-emerald-400 font-medium">Skills: {(profile?.skills || ["Python", "React", "TypeScript", "Docker"]).slice(0, 5).join(", ")}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/20 text-emerald-400">
+            📍 {profile?.current_location || "Bengaluru, India"} (India Preferred 🇮🇳)
+          </span>
         </div>
       </div>
 
@@ -245,6 +340,7 @@ export const FindJobsPage: React.FC = () => {
               className="fluent-input w-full text-xs"
             >
               <option value="all">Source: All Platforms</option>
+              <option value="remotive">Remotive (Software Dev)</option>
               <option value="remoteok">RemoteOK</option>
               <option value="jobicy">Jobicy</option>
               <option value="manual">Manual / Direct</option>
@@ -288,9 +384,38 @@ export const FindJobsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Listings Count */}
-      <div className="flex items-center justify-between text-xs text-text-muted px-1">
-        <span>Showing {jobs.length} jobs</span>
+      {/* Listings Count & Multi-Tab Selection Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-text-muted px-1">
+        <div className="flex items-center gap-3">
+          <span>Showing {jobs.length} jobs</span>
+          {jobs.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={selectAllEligibleJobs}
+                className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" />
+                <span>Select Top 10 Eligible</span>
+              </button>
+              {selectedJobIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedJobIds(new Set())}
+                  className="text-[11px] text-danger hover:underline"
+                >
+                  Clear Selection ({selectedJobIds.size})
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {selectedJobIds.size > 0 && (
+          <span className="text-[11px] font-bold text-primary">
+            {selectedJobIds.size} job(s) selected for Multi-Tab Apply
+          </span>
+        )}
       </div>
 
       {/* Job Cards Grid */}
@@ -314,18 +439,30 @@ export const FindJobsPage: React.FC = () => {
             const elig = job.eligibility_assessment || { is_eligible: true, reasons: [] };
             const isEligible = elig.is_eligible;
             const isApplyingThis = applyingJobId === job.id;
+            const isSelected = selectedJobIds.has(job.id);
 
             return (
               <div
                 key={job.id}
-                className="fluent-card p-5 flex flex-col justify-between hover:border-borderHover transition-all"
+                className={`fluent-card p-5 flex flex-col justify-between hover:border-borderHover transition-all ${
+                  isSelected ? "border-primary bg-primary/5 shadow-xs" : ""
+                }`}
               >
                 <div>
-                  {/* Top Bar of Card */}
+                  {/* Top Bar of Card with Selection Checkbox */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <h3 className="font-semibold text-text-primary text-sm line-clamp-1">{job.title}</h3>
-                      <div className="text-xs text-text-secondary font-medium">{job.company}</div>
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleJobSelection(job.id)}
+                        className="accent-primary w-4 h-4 rounded cursor-pointer mt-0.5 shrink-0"
+                        title="Select for Multi-Tab Apply"
+                      />
+                      <div className="space-y-0.5 min-w-0">
+                        <h3 className="font-semibold text-text-primary text-sm line-clamp-1">{job.title}</h3>
+                        <div className="text-xs text-text-secondary font-medium">{job.company}</div>
+                      </div>
                     </div>
 
                     {/* Match Score Badge */}
@@ -562,6 +699,70 @@ export const FindJobsPage: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* FLOATING ACTION BAR FOR MULTI-TAB APPLY */}
+      {selectedJobIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface/95 backdrop-blur-md border border-primary/50 shadow-2xl rounded-2xl p-3 px-5 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-accent text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+              {selectedJobIds.size}
+            </span>
+            <div>
+              <span className="text-xs font-bold text-text-primary block">
+                Jobs Selected for Multi-Tab Apply
+              </span>
+              <span className="text-[10px] text-text-muted">
+                Will open separate Chromium tabs to apply
+              </span>
+            </div>
+          </div>
+
+          <div className="h-6 w-px bg-border" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-text-muted flex items-center gap-1">
+              <Clock className="w-3 h-3 text-primary" /> Delay:
+            </span>
+            <select
+              value={multiTabDelay}
+              onChange={(e) => setMultiTabDelay(parseFloat(e.target.value))}
+              className="fluent-input text-xs py-1 px-2 font-mono font-semibold"
+            >
+              <option value="1.0">1.0s</option>
+              <option value="2.0">2.0s</option>
+              <option value="3.0">3.0s (Recommended)</option>
+              <option value="5.0">5.0s</option>
+              <option value="10.0">10.0s</option>
+            </select>
+          </div>
+
+          <button
+            onClick={handleApplySelectedMultiTab}
+            disabled={multiTabApplying}
+            className="fluent-button fluent-button-primary text-xs py-2 px-4 font-bold shadow-md flex items-center gap-1.5"
+          >
+            {multiTabApplying ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Applying across tabs...</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Launch Multi-Tab Apply ({selectedJobIds.size} Tabs)</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setSelectedJobIds(new Set())}
+            className="text-text-muted hover:text-text-primary p-1.5 rounded-lg hover:bg-surfaceHover transition-colors"
+            title="Deselect all"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

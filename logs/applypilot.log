@@ -56,3 +56,53 @@
 [2026-10-12 17:13:44,325] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 57 duplicates skipped (job_id=None, app_id=None)
 [2026-10-12 17:18:00,954] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
 [2026-10-12 17:18:00,961] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 50 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 17:18:55,159] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'lower' (job_id=None, app_id=None)
+[2026-10-12 17:18:55,165] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 50 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 17:31:07,501] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'lower' (job_id=None, app_id=None)
+[2026-10-12 17:31:08,958] [INFO] [JOB_DISCOVERY] Discovery run completed: 12 curated jobs discovered, 9 duplicates skipped, 44 non-matching jobs filtered out. (job_id=None, app_id=None)
+[2026-10-12 17:33:16,382] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'lower' (job_id=None, app_id=None)
+[2026-10-12 17:33:18,588] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 curated jobs discovered, 21 duplicates skipped, 44 non-matching jobs filtered out. (job_id=None, app_id=None)
+[2026-10-12 18:05:27,859] [INFO] [BROWSER_MULTI_TAB_START] Launching multi-tab browser apply across 1 career URLs with 1.0s delay (Auto-Submit=True) (job_id=None, app_id=None)
+[2026-10-12 18:05:27,865] [INFO] Starting multi-tab career apply across 1 URLs with 1.0s delay
+[2026-10-12 18:05:28,161] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 18:05:28,546] [INFO] [Multi-Tab] Opening tab 1/1: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:28,546] [INFO] Applying in visible browser at: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:30,650] [INFO] Executing Generic Form Filler workflow
+[2026-10-12 18:05:30,789] [INFO] Filled selector 'input[name*='name'][name*='full']' with value 'Alex Mercer...'
+[2026-10-12 18:05:30,871] [INFO] Filled selector 'input[type='email']' with value 'alex.mercer@example....'
+[2026-10-12 18:05:30,926] [INFO] Filled selector 'input[type='tel']' with value '+1 (555) 234-5678...'
+[2026-10-12 18:05:30,982] [INFO] Filled selector 'input[placeholder*='city' i]' with value 'Bengaluru, India...'
+[2026-10-12 18:05:31,034] [INFO] Filled selector 'textarea[name*='cover' i]' with value 'Dear Hiring Team,
+
+I...'
+[2026-10-12 18:05:31,145] [INFO] Clicked button 'button[type='submit']'
+[2026-10-12 18:05:31,214] [INFO] [BROWSER_MULTI_TAB_COMPLETE] Completed multi-tab browser apply: 1/1 tabs processed (job_id=None, app_id=None)
+[2026-10-12 18:05:37,989] [INFO] [BROWSER_MULTI_TAB_START] Launching multi-tab browser apply across 2 career URLs with 2.0s delay (Auto-Submit=True) (job_id=None, app_id=None)
+[2026-10-12 18:05:37,993] [INFO] Starting multi-tab career apply across 2 URLs with 2.0s delay
+[2026-10-12 18:05:38,036] [INFO] [Multi-Tab] Opening tab 1/2: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:38,036] [INFO] Applying in visible browser at: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:40,076] [INFO] Executing Generic Form Filler workflow
+[2026-10-12 18:05:40,168] [INFO] Filled selector 'input[name*='name'][name*='full']' with value 'Alex Mercer...'
+[2026-10-12 18:05:40,235] [INFO] Filled selector 'input[type='email']' with value 'alex.mercer@example....'
+[2026-10-12 18:05:40,285] [INFO] Filled selector 'input[type='tel']' with value '+1 (555) 234-5678...'
+[2026-10-12 18:05:40,341] [INFO] Filled selector 'input[placeholder*='city' i]' with value 'Bengaluru, India...'
+[2026-10-12 18:05:40,394] [INFO] Filled selector 'textarea[name*='cover' i]' with value 'Dear Hiring Team,
+
+I...'
+[2026-10-12 18:05:40,509] [INFO] Clicked button 'button[type='submit']'
+[2026-10-12 18:05:40,565] [INFO] [Multi-Tab] Waiting 2.0s user delay before opening next tab...
+[2026-10-12 18:05:42,610] [INFO] [Multi-Tab] Opening tab 2/2: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:42,610] [INFO] Applying in visible browser at: http://127.0.0.1:8000/demo-career-portal
+[2026-10-12 18:05:44,650] [INFO] Executing Generic Form Filler workflow
+[2026-10-12 18:05:44,737] [INFO] Filled selector 'input[name*='name'][name*='full']' with value 'Alex Mercer...'
+[2026-10-12 18:05:44,813] [INFO] Filled selector 'input[type='email']' with value 'alex.mercer@example....'
+[2026-10-12 18:05:44,868] [INFO] Filled selector 'input[type='tel']' with value '+1 (555) 234-5678...'
+[2026-10-12 18:05:44,923] [INFO] Filled selector 'input[placeholder*='city' i]' with value 'Bengaluru, India...'
+[2026-10-12 18:05:44,975] [INFO] Filled selector 'textarea[name*='cover' i]' with value 'Dear Hiring Team,
+
+I...'
+[2026-10-12 18:05:45,085] [INFO] Clicked button 'button[type='submit']'
+[2026-10-12 18:05:45,151] [INFO] [BROWSER_MULTI_TAB_COMPLETE] Completed multi-tab browser apply: 2/2 tabs processed (job_id=None, app_id=None)
+[2026-10-12 18:34:26,749] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'lower' (job_id=None, app_id=None)
+[2026-10-12 18:34:28,525] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 curated jobs discovered, 21 duplicates skipped, 44 non-matching jobs filtered out. (job_id=None, app_id=None)
+[2026-10-12 18:34:42,481] [INFO] [SESSION_START] Started automation session sess_20261012_130442 with target 15 applications, 2.0s delay (job_id=None, app_id=None)

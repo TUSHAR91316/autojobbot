@@ -244,6 +244,18 @@ export const useAppMutations = () => {
     },
   });
 
+  // Curate jobs by candidate resume
+  const curateJobs = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/jobs/curate");
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+
   // Import job URL
   const importJobUrl = useMutation({
     mutationFn: async (jobData: any) => {
@@ -498,6 +510,32 @@ export const useAppMutations = () => {
     },
   });
 
+  const applyMultiTabInBrowser = useMutation({
+    mutationFn: async ({
+      urls,
+      delaySeconds = 3,
+      autoSubmit = true,
+    }: {
+      urls: string[];
+      delaySeconds?: number;
+      autoSubmit?: boolean;
+    }) => {
+      const res = await apiClient.post("/automation/browser/apply-multi-tab", {
+        urls,
+        delay_seconds: delaySeconds,
+        auto_submit: autoSubmit,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
   return {
     updateProfile,
     uploadResume,
@@ -505,6 +543,7 @@ export const useAppMutations = () => {
     setPrimaryResume,
     deleteResume,
     discoverJobs,
+    curateJobs,
     importJobUrl,
     importCsv,
     queueJob,
@@ -528,5 +567,6 @@ export const useAppMutations = () => {
     toggleSimulationMode,
     openPortalLogin,
     connectChromeCdp,
+    applyMultiTabInBrowser,
   };
 };

@@ -11,8 +11,8 @@ class RemoteOKProvider(BaseJobProvider):
     def provider_name(self) -> str:
         return "remoteok"
 
-    async def fetch_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        url = "https://remoteok.com/api"
+    async def fetch_jobs(self, limit: int = 50, tag: str = "dev") -> List[Dict[str, Any]]:
+        url = f"https://remoteok.com/api?tag={tag}" if tag else "https://remoteok.com/api?tag=dev"
         headers = {
             "User-Agent": "ApplyPilot-LocalAssistant/1.0 (Local-First Engineering Job Search)",
             "Accept": "application/json",

@@ -24,6 +24,10 @@ import {
   Lock,
   Unlock,
   Terminal,
+  Layers,
+  Eye,
+  RefreshCw,
+  Image as ImageIcon,
 } from "lucide-react";
 import {
   useAutomationSettings,
@@ -57,6 +61,7 @@ export const AutomationPage: React.FC = () => {
     applyCustomUrlInBrowser,
     openPortalLogin,
     connectChromeCdp,
+    applyMultiTabInBrowser,
   } = useAppMutations();
 
   const [formData, setFormData] = useState<Partial<AutomationSettings>>({});
@@ -65,6 +70,30 @@ export const AutomationPage: React.FC = () => {
   const [quickApplyMsg, setQuickApplyMsg] = useState("");
   const [cdpPortInput, setCdpPortInput] = useState("http://127.0.0.1:9222");
   const [cdpMsg, setCdpMsg] = useState("");
+
+  // Multi-tab career portal auto-apply state
+  const [multiUrlsText, setMultiUrlsText] = useState(
+    "http://127.0.0.1:8000/demo-career-portal\nhttps://jobs.lever.co/example/senior-python-engineer\nhttps://boards.greenhouse.io/techcorp/jobs/101"
+  );
+  const [multiDelay, setMultiDelay] = useState(3.0);
+  const [multiAutoSubmit, setMultiAutoSubmit] = useState(true);
+  const [multiTabRunning, setMultiTabRunning] = useState(false);
+  const [multiTabProgress, setMultiTabProgress] = useState<string>("");
+  const [multiTabResults, setMultiTabResults] = useState<{
+    total_tabs: number;
+    completed: number;
+    delay_seconds: number;
+    auto_submit: boolean;
+    tab_results: Array<{
+      tab_index: number;
+      url: string;
+      outcome: string;
+      message: string;
+      steps_completed: string[];
+      screenshot?: string;
+    }>;
+  } | null>(null);
+  const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -117,6 +146,48 @@ export const AutomationPage: React.FC = () => {
       setCdpMsg(err.response?.data?.detail || "Could not connect to Chrome. Ensure Chrome is running with --remote-debugging-port=9222");
       setTimeout(() => setCdpMsg(""), 6000);
     }
+  };
+
+  const handleLaunchMultiTab = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawLines = multiUrlsText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (rawLines.length === 0) {
+      alert("Please enter at least one career website URL.");
+      return;
+    }
+
+    try {
+      setMultiTabRunning(true);
+      setMultiTabProgress(`Launching visible browser and opening ${rawLines.length} tabs with ${multiDelay}s delay...`);
+      setMultiTabResults(null);
+
+      const res = await applyMultiTabInBrowser.mutateAsync({
+        urls: rawLines,
+        delaySeconds: multiDelay,
+        autoSubmit: multiAutoSubmit,
+      });
+
+      setMultiTabResults(res);
+      setMultiTabProgress(`Successfully processed ${res.completed} of ${res.total_tabs} tabs!`);
+    } catch (err: any) {
+      setMultiTabProgress(err.response?.data?.detail || err.message || "Failed to execute multi-tab automation");
+    } finally {
+      setMultiTabRunning(false);
+    }
+  };
+
+  const handleAddSampleUrls = () => {
+    const samples = [
+      "http://127.0.0.1:8000/demo-career-portal",
+      "https://jobs.lever.co/example/senior-python-engineer",
+      "https://boards.greenhouse.io/techcorp/jobs/101",
+      "https://www.naukri.com/job-listings-fullstack-dev-bangalore-12345",
+    ];
+    setMultiUrlsText(samples.join("\n"));
   };
 
   const isRunning = status?.is_active && !status?.is_paused;
@@ -429,6 +500,277 @@ export const AutomationPage: React.FC = () => {
         </div>
       </div>
 
+      {/* MULTI-TAB CAREER PORTAL LIVE AUTO-APPLY CONSOLE */}
+      <div className="fluent-card p-5 border-primary/40 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-accent text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-text-primary">
+                  Multi-Tab Career Portal Live Auto-Apply
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
+                  Visible Multi-Tab Browser
+                </span>
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                Directly opens real Chromium tabs on your screen, navigates to career portals (Lever, Greenhouse, Workday, Naukri, LinkedIn, Company Sites), clicks Apply, fills candidate form fields, attaches resume, and applies with your user-configured delay.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-[11px] text-text-muted">Target Candidate:</span>
+            <span className="text-[11px] font-bold text-text-primary bg-surfaceHover px-2 py-1 rounded">
+              {profile?.full_name || "Alex Mercer"} • {profile?.current_location || "Bengaluru, India"} 🇮🇳
+            </span>
+          </div>
+        </div>
+
+        {/* Configuration Controls Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3.5 bg-surfaceHover/40 rounded-xl border border-border">
+          {/* User-Configured Delay Slider */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-primary" />
+                <span>Delay Between Tabs:</span>
+              </label>
+              <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20 font-mono">
+                {multiDelay.toFixed(1)}s Pause
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1.0"
+              max="15.0"
+              step="0.5"
+              value={multiDelay}
+              onChange={(e) => setMultiDelay(parseFloat(e.target.value))}
+              className="w-full accent-primary h-1.5 bg-border rounded-lg cursor-pointer"
+            />
+            <p className="text-[10px] text-text-muted">
+              Applies a pause between launching each tab so you can observe the desktop browser filling fields in real-time.
+            </p>
+          </div>
+
+          {/* Submission Mode Toggle */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+              <span>Application Execution Mode:</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => setMultiAutoSubmit(true)}
+                className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${
+                  multiAutoSubmit
+                    ? "bg-primary text-white border-primary shadow-xs"
+                    : "bg-surface text-text-muted border-border hover:bg-surfaceHover"
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Auto-Submit</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMultiAutoSubmit(false)}
+                className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${
+                  !multiAutoSubmit
+                    ? "bg-primary text-white border-primary shadow-xs"
+                    : "bg-surface text-text-muted border-border hover:bg-surfaceHover"
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Fill & Review</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-text-muted">
+              {multiAutoSubmit
+                ? "Submits the application and records confirmation screenshot."
+                : "Fills all form fields & uploads resume, then leaves tab open for your confirmation."}
+            </p>
+          </div>
+        </div>
+
+        {/* URLs Input & Preset Buttons */}
+        <form onSubmit={handleLaunchMultiTab} className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-text-primary">
+                Career Website URLs (One per line):
+              </label>
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-primary/10 text-primary">
+                {multiUrlsText.split("\n").filter((l) => l.trim().length > 0).length} URL(s)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setMultiUrlsText("http://127.0.0.1:8000/demo-career-portal")}
+                className="fluent-button fluent-button-secondary text-[11px] py-1 px-2 font-medium"
+              >
+                <span>+ Local Demo Portal</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSampleUrls}
+                className="fluent-button fluent-button-secondary text-[11px] py-1 px-2 font-medium"
+              >
+                <span>+ Sample Portals</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMultiUrlsText("")}
+                className="fluent-button fluent-button-secondary text-[11px] py-1 px-2 text-danger hover:text-danger font-medium"
+              >
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            rows={5}
+            value={multiUrlsText}
+            onChange={(e) => setMultiUrlsText(e.target.value)}
+            placeholder="Paste career portal URLs here, one per line...&#10;https://jobs.lever.co/company/job-id&#10;https://boards.greenhouse.io/company/jobs/12345&#10;https://www.linkedin.com/jobs/view/123456"
+            className="fluent-input font-mono text-xs w-full leading-relaxed p-3 bg-slate-950/40 border-border"
+          />
+
+          {/* Action Row */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+            <div className="text-xs text-text-muted flex items-center gap-2">
+              {multiTabRunning ? (
+                <span className="flex items-center gap-2 text-primary font-semibold animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{multiTabProgress || "Executing multi-tab browser apply..."}</span>
+                </span>
+              ) : multiTabProgress ? (
+                <span className="text-text-primary font-medium">{multiTabProgress}</span>
+              ) : (
+                <span>Clicking launch will bring the desktop Chromium browser window forward to open tabs.</span>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={multiTabRunning || !multiUrlsText.trim()}
+              className="fluent-button fluent-button-primary text-xs py-2 px-5 font-bold shadow-md self-stretch sm:self-auto justify-center"
+            >
+              {multiTabRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Applying Across Tabs...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Launch Multi-Tab Browser Apply</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+
+        {/* Multi-Tab Results Display */}
+        {multiTabResults && (
+          <div className="pt-3 border-t border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success" />
+                <h4 className="text-xs font-bold text-text-primary">
+                  Multi-Tab Run Telemetry ({multiTabResults.completed}/{multiTabResults.total_tabs} Tabs Processed)
+                </h4>
+              </div>
+              <span className="text-[11px] text-text-muted">
+                Configured Delay: <strong>{multiTabResults.delay_seconds}s</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {multiTabResults.tab_results.map((tab) => (
+                <div
+                  key={tab.tab_index}
+                  className="p-3.5 rounded-xl bg-surfaceHover/50 border border-border flex flex-col justify-between space-y-2.5 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 rounded-full bg-primary/20 text-primary font-bold text-xs flex items-center justify-center shrink-0">
+                        {tab.tab_index}
+                      </span>
+                      <a
+                        href={tab.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-semibold text-text-primary hover:text-primary transition-colors truncate flex items-center gap-1"
+                      >
+                        <span className="truncate">{tab.url}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0 text-text-muted" />
+                      </a>
+                    </div>
+
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase shrink-0 ${
+                        tab.outcome === "SUBMITTED"
+                          ? "bg-success/20 text-success border border-success/30"
+                          : tab.outcome === "PARTIAL_FILLED"
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : tab.outcome === "MANUAL_ACTION_REQUIRED"
+                          ? "bg-warning/20 text-warning border border-warning/30"
+                          : "bg-danger/20 text-danger border border-danger/30"
+                      }`}
+                    >
+                      {tab.outcome}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    {tab.message}
+                  </p>
+
+                  {/* Steps tags */}
+                  {tab.steps_completed && tab.steps_completed.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {tab.steps_completed.map((st, i) => (
+                        <span
+                          key={i}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-surface text-text-secondary border border-border/80 font-mono"
+                        >
+                          {st}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Screenshot Thumbnail */}
+                  {tab.screenshot && (
+                    <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewScreenshot(`http://127.0.0.1:8000${tab.screenshot}`)}
+                        className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Browser Screenshot</span>
+                      </button>
+                      <span className="text-[10px] text-text-muted font-mono truncate max-w-[150px]">
+                        {tab.screenshot.split("/").pop()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Main Interactive Session Control Panel */}
       <div className="fluent-card p-5 border-primary/30 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
@@ -693,6 +1035,41 @@ export const AutomationPage: React.FC = () => {
           </label>
         </div>
       </form>
+
+      {/* SCREENSHOT FULL PREVIEW MODAL */}
+      {previewScreenshot && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fluent-card max-w-4xl w-full p-4 space-y-3 bg-surface border-border shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <span className="text-xs font-bold text-text-primary flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-primary" />
+                <span>Live Browser Automation Capture</span>
+              </span>
+              <button
+                onClick={() => setPreviewScreenshot(null)}
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surfaceHover"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="rounded-lg overflow-hidden border border-border bg-slate-950 flex items-center justify-center max-h-[75vh]">
+              <img
+                src={previewScreenshot}
+                alt="Browser Automation View"
+                className="w-full h-auto object-contain max-h-[75vh]"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setPreviewScreenshot(null)}
+                className="fluent-button fluent-button-secondary text-xs px-4"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

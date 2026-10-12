@@ -12,6 +12,7 @@ from backend.app.services.matcher import evaluate_job_match
 from backend.app.services.duplicate import check_for_duplicate_job, normalize_job_url
 from backend.app.providers.remoteok import RemoteOKProvider
 from backend.app.providers.jobicy import JobicyProvider
+from backend.app.providers.remotive import RemotiveProvider
 from backend.app.providers.csv_provider import parse_csv_jobs, export_jobs_to_csv
 from backend.app.core.logging import log_activity
 
@@ -86,7 +87,7 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/discover")
 async def discover_jobs(
-    source: str = Query("all", description="Source provider: all, remoteok, jobicy"),
+    source: str = Query("all", description="Source provider: all, remotive, jobicy, remoteok"),
     db: Session = Depends(get_db)
 ):
     profile = db.query(CandidateProfile).first() or CandidateProfile()
@@ -94,19 +95,30 @@ async def discover_jobs(
     settings_obj = db.query(AutomationSettings).first() or AutomationSettings()
 
     providers = []
-    if source in ["all", "remoteok"]:
-        providers.append(RemoteOKProvider())
+    if source in ["all", "remotive"]:
+        providers.append(RemotiveProvider())
     if source in ["all", "jobicy"]:
         providers.append(JobicyProvider())
+    if source in ["all", "remoteok"]:
+        providers.append(RemoteOKProvider())
 
     discovered_count = 0
     duplicates_skipped = 0
+    filtered_out_count = 0
     new_jobs = []
 
     for prov in providers:
         try:
             raw_jobs = await prov.fetch_jobs(limit=settings_obj.max_jobs_to_inspect)
             for jdata in raw_jobs:
+                # Score & check eligibility against resume & profile
+                score, breakdown, eligibility = evaluate_job_match(jdata, profile, prefs)
+
+                # Strictly curate: discard non-matching / non-software jobs
+                if not eligibility.get("is_eligible", True) or score < 45.0:
+                    filtered_out_count += 1
+                    continue
+
                 is_dup, existing, _ = check_for_duplicate_job(
                     db,
                     raw_url=jdata.get("original_url", ""),
@@ -118,8 +130,6 @@ async def discover_jobs(
                     duplicates_skipped += 1
                     continue
 
-                # Score & check eligibility
-                score, breakdown, eligibility = evaluate_job_match(jdata, profile, prefs)
                 norm_url = normalize_job_url(jdata.get("original_url", ""))
 
                 job_record = JobListing(
@@ -143,7 +153,7 @@ async def discover_jobs(
                     match_score=score,
                     match_breakdown=breakdown,
                     eligibility_assessment=eligibility,
-                    status="MATCHED" if score >= settings_obj.min_match_score and eligibility.get("is_eligible") else "DISCOVERED"
+                    status="MATCHED" if score >= settings_obj.min_match_score else "DISCOVERED"
                 )
                 db.add(job_record)
                 new_jobs.append(job_record)
@@ -154,14 +164,23 @@ async def discover_jobs(
     db.commit()
     log_activity(
         db, "SUCCESS", "JOB_DISCOVERY",
-        f"Discovery run completed: {discovered_count} discovered, {duplicates_skipped} duplicates skipped",
-        details={"discovered": discovered_count, "duplicates_skipped": duplicates_skipped}
+        f"Discovery run completed: {discovered_count} curated jobs discovered, {duplicates_skipped} duplicates skipped, {filtered_out_count} non-matching jobs filtered out.",
+        details={"discovered": discovered_count, "duplicates_skipped": duplicates_skipped, "filtered_out": filtered_out_count}
     )
     return {
         "success": True,
         "discovered_count": discovered_count,
-        "duplicates_skipped": duplicates_skipped
+        "duplicates_skipped": duplicates_skipped,
+        "filtered_out_count": filtered_out_count
     }
+
+
+@router.post("/curate")
+async def curate_jobs_by_resume(db: Session = Depends(get_db)):
+    """
+    Curates fresh real jobs strictly matching candidate's resume skills, titles, and India/remote preferences.
+    """
+    return await discover_jobs(source="all", db=db)
 
 
 @router.post("/import/url")
