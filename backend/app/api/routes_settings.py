@@ -14,7 +14,6 @@ from backend.app.schemas.settings import (
 )
 from backend.app.schemas.stats import DashboardStatsResponse, SessionProgress, LastRunDetails
 from backend.app.services.task_manager import task_manager
-from backend.app.providers.mock_provider import MockJobProvider
 from backend.app.services.matcher import evaluate_job_match
 from backend.app.models.profile import CandidateProfile
 from backend.app.services.duplicate import normalize_job_url
@@ -175,68 +174,6 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
 
 @router.post("/seed-demo")
-async def seed_demo_data(db: Session = Depends(get_db)):
-    """Seed sample job listings and simulated applications for instant demonstration"""
-    mock_prov = MockJobProvider()
-    jobs = await mock_prov.fetch_jobs(limit=10)
-    profile = db.query(CandidateProfile).first() or CandidateProfile()
-    prefs = get_or_create_preferences(db)
-
-    for j in jobs:
-        score, breakdown, eligibility = evaluate_job_match(j, profile, prefs)
-        norm_url = normalize_job_url(j.get("original_url", ""))
-        
-        # Check if already exists
-        exists = db.query(JobListing).filter(JobListing.title == j["title"]).first()
-        if exists:
-            continue
-
-        record = JobListing(
-            title=j["title"],
-            company=j["company"],
-            location=j.get("location", "Remote"),
-            work_mode=j.get("work_mode", "remote"),
-            employment_type=j.get("employment_type", "full_time"),
-            salary_min=j.get("salary_min"),
-            salary_max=j.get("salary_max"),
-            salary_currency="USD",
-            experience_min_years=j.get("experience_min_years", 3.0),
-            experience_level=j.get("experience_level", "mid"),
-            required_skills=j.get("required_skills", []),
-            description=j.get("description", ""),
-            source_platform=j.get("source_platform", "synthetic_demo"),
-            original_url=j.get("original_url", ""),
-            normalized_url=norm_url,
-            application_method=j.get("application_method", "EXTERNAL_SITE"),
-            match_score=score,
-            match_breakdown=breakdown,
-            eligibility_assessment=eligibility,
-            status="MATCHED" if score >= 60 else "DISCOVERED"
-        )
-        db.add(record)
-        db.commit()
-        db.refresh(record)
-
-        # Seed an application for top 3
-        if score >= 75:
-            existing_app = db.query(JobApplication).filter(JobApplication.job_id == record.id).first()
-            if not existing_app:
-                status_choice = ApplicationStatus.QUEUED.value
-                if "Nexus" in record.company:
-                    status_choice = ApplicationStatus.READY_TO_SUBMIT.value
-                elif "Hyperion" in record.company:
-                    status_choice = ApplicationStatus.AWAITING_REVIEW.value
-                elif "Astral" in record.company:
-                    status_choice = ApplicationStatus.MANUAL_ACTION_REQUIRED.value
-
-                app = JobApplication(
-                    job_id=record.id,
-                    status=status_choice,
-                    queue_position=1,
-                    last_action="Seeded for demonstration",
-                    external_portal_url=record.original_url if status_choice == ApplicationStatus.MANUAL_ACTION_REQUIRED.value else ""
-                )
-                db.add(app)
-                db.commit()
-
-    return {"success": True, "message": "Demo data successfully seeded"}
+async def seed_demo_data():
+    """Mock demo data seeding has been removed."""
+    return {"success": False, "message": "Mock demo data seeding has been disabled. ApplyPilot runs exclusively with real jobs."}

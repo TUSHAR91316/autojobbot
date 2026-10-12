@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 from typing import List
@@ -8,7 +9,7 @@ from backend.app.core.config import RESUMES_DIR
 from backend.app.models.profile import CandidateProfile
 from backend.app.models.resume import ResumeVersion
 from backend.app.schemas.profile import CandidateProfileResponse, CandidateProfileUpdate
-from backend.app.schemas.resume import ResumeVersionResponse
+from backend.app.schemas.resume import ResumeVersionResponse, ResumePasteCreate
 from backend.app.services.resume_parser import parse_resume_content
 from backend.app.core.logging import log_activity
 
@@ -69,10 +70,14 @@ async def upload_resume(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Validate extension
+    # Validate extension: PDF, Word (docx, doc), LaTeX (tex), Text (txt, md)
     file_ext = Path(file.filename or "").suffix.lower().lstrip(".")
-    if file_ext not in ["pdf", "docx"]:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are permitted")
+    allowed_exts = ["pdf", "docx", "doc", "tex", "txt", "md"]
+    if file_ext not in allowed_exts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '.{file_ext}'. Supported: PDF (.pdf), Word (.docx, .doc), LaTeX (.tex), and Text (.txt, .md)"
+        )
 
     # Limit file size to 10MB
     file.file.seek(0, 2)
@@ -82,8 +87,8 @@ async def upload_resume(
         raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
 
     # Safe destination filename
-    clean_filename = f"{Path(file.filename or 'resume').stem}_{file_ext}"
-    dest_path = RESUMES_DIR / f"{Path(file.filename or 'resume').stem}_{file_ext}"
+    clean_filename = f"{Path(file.filename or 'resume').stem}.{file_ext}"
+    dest_path = RESUMES_DIR / clean_filename
     counter = 1
     while dest_path.exists():
         dest_path = RESUMES_DIR / f"{Path(file.filename or 'resume').stem}_{counter}.{file_ext}"
@@ -92,7 +97,7 @@ async def upload_resume(
     with open(dest_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Extract text locally
+    # Extract text locally with format-specific parser
     try:
         parsed = parse_resume_content(dest_path, file_ext)
         extracted_text = parsed["text"]
@@ -119,6 +124,54 @@ async def upload_resume(
     db.refresh(resume_record)
 
     log_activity(db, "SUCCESS", "RESUME_UPLOAD", f"Uploaded resume '{resume_record.label}' ({file_ext.upper()})")
+    return resume_record
+
+
+@router.post("/resumes/paste", response_model=ResumeVersionResponse)
+def create_pasted_resume(
+    data: ResumePasteCreate,
+    db: Session = Depends(get_db)
+):
+    """Create and parse a resume from direct LaTeX code or Plain Text / Markdown"""
+    ext = (data.file_type or "tex").lower().lstrip(".")
+    if ext not in ["tex", "txt", "md", "latex"]:
+        ext = "tex"
+    file_ext = "tex" if ext in ["latex", "tex"] else ext
+
+    clean_stem = re.sub(r"[^\w\-_]", "_", data.label.strip().lower()) or "resume"
+    dest_path = RESUMES_DIR / f"{clean_stem}.{file_ext}"
+    counter = 1
+    while dest_path.exists():
+        dest_path = RESUMES_DIR / f"{clean_stem}_{counter}.{file_ext}"
+        counter += 1
+
+    dest_path.write_text(data.content, encoding="utf-8")
+    file_size = len(data.content.encode("utf-8"))
+
+    try:
+        parsed = parse_resume_content(dest_path, file_ext)
+        extracted_text = parsed["text"]
+    except Exception as e:
+        extracted_text = f"[Text extraction notice: {str(e)}]"
+
+    if data.is_primary:
+        db.query(ResumeVersion).update({ResumeVersion.is_primary: False})
+
+    resume_record = ResumeVersion(
+        label=data.label.strip(),
+        target_categories=data.target_categories,
+        file_name=dest_path.name,
+        file_path=str(dest_path),
+        file_size=file_size,
+        file_type=file_ext,
+        extracted_text=extracted_text,
+        is_primary=data.is_primary,
+    )
+    db.add(resume_record)
+    db.commit()
+    db.refresh(resume_record)
+
+    log_activity(db, "SUCCESS", "RESUME_PASTE", f"Saved pasted resume '{resume_record.label}' ({file_ext.upper()})")
     return resume_record
 
 

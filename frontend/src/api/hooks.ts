@@ -24,6 +24,30 @@ export const useDashboardStats = () => {
   });
 };
 
+// Browser Sessions & Authentication Status
+export interface BrowserSessionsStatus {
+  linkedin: boolean;
+  indeed: boolean;
+  naukri: boolean;
+  wellfound: boolean;
+  google: boolean;
+  total_cookies: number;
+  profile_path: string;
+  is_launched: boolean;
+  is_cdp: boolean;
+}
+
+export const useBrowserSessions = () => {
+  return useQuery<BrowserSessionsStatus>({
+    queryKey: ["browser-sessions"],
+    queryFn: async () => {
+      const res = await apiClient.get<BrowserSessionsStatus>("/automation/browser/sessions");
+      return res.data;
+    },
+    refetchInterval: 4000,
+  });
+};
+
 // Automation Session Telemetry
 export const useAutomationStatus = () => {
   return useQuery<SessionProgress>({
@@ -172,6 +196,21 @@ export const useAppMutations = () => {
       const res = await apiClient.post<ResumeVersion>("/profile/resumes/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["resumes"] }),
+  });
+
+  // Resume paste (LaTeX or Plain Text)
+  const pasteResume = useMutation({
+    mutationFn: async (payload: {
+      label: string;
+      target_categories: string[];
+      is_primary: boolean;
+      file_type: string;
+      content: string;
+    }) => {
+      const res = await apiClient.post<ResumeVersion>("/profile/resumes/paste", payload);
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["resumes"] }),
@@ -376,9 +415,93 @@ export const useAppMutations = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["logs"] }),
   });
 
+  // Live Browser Bot Control & Direct Apply
+  const applySingleJobInBrowser = useMutation({
+    mutationFn: async (jobId: number) => {
+      const res = await apiClient.post(`/automation/browser/apply-job/${jobId}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const applyCustomUrlInBrowser = useMutation({
+    mutationFn: async ({ url, title, company }: { url: string; title?: string; company?: string }) => {
+      const res = await apiClient.post("/automation/browser/apply-url", { url, title, company });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const launchDesktopBrowser = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/automation/browser/launch");
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const closeDesktopBrowser = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/automation/browser/close");
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const toggleSimulationMode = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/automation/toggle-simulation");
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+      qc.invalidateQueries({ queryKey: ["settings-automation"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+
+  const openPortalLogin = useMutation({
+    mutationFn: async (site: string = "linkedin") => {
+      const res = await apiClient.post(`/automation/browser/login?site=${site}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["browser-sessions"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const connectChromeCdp = useMutation({
+    mutationFn: async (cdpUrl: string = "http://127.0.0.1:9222") => {
+      const res = await apiClient.post(`/automation/browser/connect-cdp?cdp_url=${encodeURIComponent(cdpUrl)}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["browser-sessions"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
   return {
     updateProfile,
     uploadResume,
+    pasteResume,
     setPrimaryResume,
     deleteResume,
     discoverJobs,
@@ -398,5 +521,12 @@ export const useAppMutations = () => {
     updateJobPreferences,
     seedDemoData,
     clearLogs,
+    applySingleJobInBrowser,
+    applyCustomUrlInBrowser,
+    launchDesktopBrowser,
+    closeDesktopBrowser,
+    toggleSimulationMode,
+    openPortalLogin,
+    connectChromeCdp,
   };
 };

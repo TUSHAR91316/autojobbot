@@ -37,10 +37,10 @@ def normalize_weights(prefs: JobPreferences) -> Dict[str, float]:
 
 def compute_skills_score(job_skills: List[str], candidate_skills: List[str], job_description: str) -> Tuple[float, List[str], List[str]]:
     """Calculate skill match percentage and matched/missing lists"""
-    cand_norm = {s.strip().lower() for s in candidate_skills if s.strip()}
+    cand_norm = {str(s).strip().lower() for s in candidate_skills if s and str(s).strip()}
     
     # If explicit job_skills list is empty, extract candidate skills mentioned in description
-    target_skills = [s.strip().lower() for s in job_skills if s.strip()]
+    target_skills = [str(s).strip().lower() for s in job_skills if s and str(s).strip()]
     if not target_skills and job_description:
         desc_lower = job_description.lower()
         target_skills = [s for s in cand_norm if re.search(r"\b" + re.escape(s) + r"\b", desc_lower)]
@@ -101,9 +101,33 @@ def compute_experience_score(job_exp_years: float, candidate_years: float, job_l
         return 20.0
 
 
-def compute_location_score(job_work_mode: str, job_location: str, pref_remote_only: bool, pref_locations: List[str]) -> float:
-    """Calculate location & work mode score (0-100)"""
+def compute_location_score(
+    job_work_mode: str,
+    job_location: str,
+    pref_remote_only: bool,
+    pref_locations: List[str],
+    candidate_location: str = "",
+) -> float:
+    """Calculate location & work mode score (0-100) with India preference support"""
     mode = (job_work_mode or "").lower()
+    loc_norm = (job_location or "").lower()
+    cand_norm = (candidate_location or "").lower()
+
+    # India tech hub aliases
+    india_keywords = [
+        "india", "bengaluru", "bangalore", "hyderabad", "pune", "mumbai",
+        "delhi", "noida", "gurgaon", "gurugram", "chennai", "kolkata",
+        "ahmedabad", "remote - india", "remote (india)"
+    ]
+    user_prefers_india = (
+        any(k in cand_norm for k in india_keywords) or
+        any(k in p.lower() for p in pref_locations for k in ["india", "bengaluru", "bangalore", "hyderabad", "pune", "mumbai", "delhi", "gurgaon"])
+    )
+    job_is_in_india = any(k in loc_norm for k in india_keywords)
+
+    if user_prefers_india and job_is_in_india:
+        return 100.0
+
     if pref_remote_only:
         if "remote" in mode:
             return 100.0
@@ -114,8 +138,6 @@ def compute_location_score(job_work_mode: str, job_location: str, pref_remote_on
     else:
         if "remote" in mode:
             return 100.0
-        # Check location match
-        loc_norm = (job_location or "").lower()
         for ploc in pref_locations:
             if ploc.lower() in loc_norm:
                 return 100.0
@@ -164,7 +186,8 @@ def evaluate_job_match(job_dict: Dict[str, Any], profile: CandidateProfile, pref
         job_dict.get("work_mode", "remote"),
         job_dict.get("location", ""),
         prefs.remote_only,
-        prefs.preferred_locations or []
+        prefs.preferred_locations or [],
+        candidate_location=profile.current_location or "",
     )
     
     # 5. Employment Type

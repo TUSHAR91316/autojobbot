@@ -10,3 +10,49 @@
 [2026-10-12 16:13:56,728] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_104356 (job_id=None, app_id=None)
 [2026-10-12 16:13:56,738] [INFO] Worker started for session sess_20261012_104356
 [2026-10-12 16:13:56,738] [INFO] [SESSION_END] Session sess_20261012_104356 finished. Processed: 0, Submitted: 0, Manual: 0, Failed: 0 (job_id=None, app_id=None)
+[2026-10-12 16:16:17,143] [INFO] [RESUME_PASTE] Saved pasted resume 'Test LaTeX Resume' (TEX) (job_id=None, app_id=None)
+[2026-10-12 16:18:06,525] [INFO] [RESUME_PASTE] Saved pasted resume 'Test LaTeX Resume' (TEX) (job_id=None, app_id=None)
+[2026-10-12 16:18:06,544] [INFO] [SESSION_START] Started automation session sess_20261012_104806 with target 5 applications, 1.0s delay (job_id=None, app_id=None)
+[2026-10-12 16:18:06,547] [INFO] [SESSION_PAUSE] Paused session sess_20261012_104806 (job_id=None, app_id=None)
+[2026-10-12 16:18:06,550] [INFO] [SESSION_RESUME] Resumed session sess_20261012_104806 (job_id=None, app_id=None)
+[2026-10-12 16:18:06,552] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_104806 (job_id=None, app_id=None)
+[2026-10-12 16:18:06,557] [INFO] Worker started for session sess_20261012_104806
+[2026-10-12 16:18:06,557] [INFO] [SESSION_END] Session sess_20261012_104806 finished. Processed: 0, Submitted: 0, Manual: 0, Failed: 0 (job_id=None, app_id=None)
+[2026-10-12 16:23:40,954] [INFO] [SESSION_START] Started automation session sess_20261012_105340 with target 15 applications, 2.0s delay (job_id=None, app_id=None)
+[2026-10-12 16:48:46,028] [INFO] [RESUME_PASTE] Saved pasted resume 'Lead_LaTeX_CV' (TEX) (job_id=None, app_id=None)
+[2026-10-12 16:51:42,222] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
+[2026-10-12 16:51:42,242] [INFO] [JOB_DISCOVERY] Discovery run completed: 50 discovered, 7 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 16:51:54,950] [INFO] [BROWSER_DIRECT_URL_START] Launching browser to apply to URL: http://127.0.0.1:8000/demo-career-portal?job=nexus-101 (job_id=58, app_id=1)
+[2026-10-12 16:51:54,953] [INFO] Opening visible browser to apply at: http://127.0.0.1:8000/demo-career-portal?job=nexus-101
+[2026-10-12 16:51:55,248] [INFO] Launching visible browser (headless=False) with profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 16:51:58,816] [INFO] Executing Generic Form Filler workflow
+[2026-10-12 16:51:58,918] [INFO] Filled selector 'input[name*='name'][name*='full']' with value 'Alex Mercer...'
+[2026-10-12 16:51:59,000] [INFO] Filled selector 'input[type='email']' with value 'alex.mercer@example....'
+[2026-10-12 16:51:59,049] [INFO] Filled selector 'input[type='tel']' with value '+1 (555) 234-5678...'
+[2026-10-12 16:51:59,097] [INFO] Filled selector 'input[placeholder*='city' i]' with value 'San Francisco, CA...'
+[2026-10-12 16:51:59,152] [INFO] Filled selector 'textarea[name*='cover' i]' with value 'Dear Nexus Scale AI ...'
+[2026-10-12 16:51:59,255] [INFO] Clicked button 'button[type='submit']'
+[2026-10-12 16:54:59,776] [INFO] [BROWSER_APPLY_START] Launching browser to apply for 'MecÃ¡nico Automotriz DiagnÃ³stico y Presupuestos' at Workana (job_id=26, app_id=2)
+[2026-10-12 16:54:59,791] [INFO] Opening visible browser to apply at: https://remoteOK.com/remote-jobs/remote-mecanico-automotriz-diagnostico-y-presupuestos-workana-1137429
+[2026-10-12 16:55:00,314] [INFO] Launching visible browser (headless=False) with profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 16:55:04,603] [INFO] [BROWSER_APPLY_PARTIAL] Browser navigated and filled 1 fields for 'MecÃ¡nico Automotriz DiagnÃ³stico y Presupuestos'. Session kept open. (job_id=26, app_id=2)
+[2026-10-12 16:57:37,788] [INFO] [APP_APPROVED] Approved application #1 for 'Senior Software Engineer' (job_id=None, app_id=None)
+[2026-10-12 16:58:03,341] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
+[2026-10-12 16:58:03,355] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 57 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 16:58:06,975] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
+[2026-10-12 16:58:06,986] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 57 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 17:08:17,255] [INFO] [BROWSER_APPLY_START] Launching browser to apply for 'Full Stack Developer (React & TypeScript)' at Hyperion Cloud Systems (job_id=2, app_id=3)
+[2026-10-12 17:08:17,259] [INFO] Opening visible browser to apply at: http://127.0.0.1:8000/demo-career-portal?job=hyperion-204
+[2026-10-12 17:08:17,577] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 17:08:20,106] [INFO] Executing Generic Form Filler workflow
+[2026-10-12 17:08:20,242] [INFO] Filled selector 'input[name*='name'][name*='full']' with value 'Alex Mercer...'
+[2026-10-12 17:08:20,346] [INFO] Filled selector 'input[type='email']' with value 'alex.mercer@example....'
+[2026-10-12 17:08:20,409] [INFO] Filled selector 'input[type='tel']' with value '+1 (555) 234-5678...'
+[2026-10-12 17:08:20,483] [INFO] Filled selector 'input[placeholder*='city' i]' with value 'Bengaluru, India...'
+[2026-10-12 17:08:20,552] [INFO] Filled selector 'textarea[name*='cover' i]' with value 'Dear Hyperion Cloud ...'
+[2026-10-12 17:08:20,658] [INFO] Clicked button 'button[type='submit']'
+[2026-10-12 17:08:20,725] [INFO] [BROWSER_APPLY_SUBMIT] Submitted application for 'Full Stack Developer (React & TypeScript)' via Live Browser. Steps: ['full_name', 'email', 'phone', 'location', 'cover_letter', 'resume_uploaded', 'submitted'] (job_id=2, app_id=3)
+[2026-10-12 17:13:44,315] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
+[2026-10-12 17:13:44,325] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 57 duplicates skipped (job_id=None, app_id=None)
+[2026-10-12 17:18:00,954] [ERROR] [DISCOVERY_ERROR] Provider jobicy failed: 'list' object has no attribute 'strip' (job_id=None, app_id=None)
+[2026-10-12 17:18:00,961] [INFO] [JOB_DISCOVERY] Discovery run completed: 0 discovered, 50 duplicates skipped (job_id=None, app_id=None)

@@ -22,8 +22,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, collapsed }) => {
   const { data: status } = useAutomationStatus();
-  const { data: settings } = useAutomationSettings();
-  const { seedDemoData, startAutomation, pauseAutomation, resumeAutomation, stopAutomation } = useAppMutations();
+  const { discoverJobs, startAutomation, pauseAutomation, resumeAutomation, stopAutomation, toggleSimulationMode } = useAppMutations();
   const [searchVal, setSearchVal] = useState("");
   const navigate = useNavigate();
 
@@ -57,22 +56,20 @@ export const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, collapsed })
 
       {/* Right Controls & Status Pill */}
       <div className="flex items-center gap-3">
-        {/* Safe Simulation Mode Badge */}
-        <div
-          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-            settings?.simulation_mode
-              ? "bg-primary/10 border-primary/30 text-primary"
-              : "bg-warning/10 border-warning/30 text-warning"
+        {/* Live Browser / Simulation Mode Toggle Badge */}
+        <button
+          onClick={() => toggleSimulationMode.mutate()}
+          disabled={toggleSimulationMode.isPending}
+          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+            status?.simulation_mode
+              ? "bg-warning/15 border-warning/40 text-warning hover:bg-warning/25"
+              : "bg-success/15 border-success/40 text-success hover:bg-success/25"
           }`}
-          title={
-            settings?.simulation_mode
-              ? "Safe Simulation Active: Exercises full pipeline without submitting to real portals"
-              : "Live Submission Mode"
-          }
+          title="Click to toggle between Live Desktop Browser (Real Chrome) and Simulation Mode"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-          <span>{settings?.simulation_mode ? "Safe Simulation" : "Live Automation"}</span>
-        </div>
+          <span className={`w-2 h-2 rounded-full ${status?.simulation_mode ? "bg-warning" : "bg-success"} animate-pulse`} />
+          <span>{status?.simulation_mode ? "Dry Run Simulation" : "Live Desktop Browser"}</span>
+        </button>
 
         {/* Live Session Controller & Telemetry Pill */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surfaceHover border border-border text-xs">
@@ -116,15 +113,15 @@ export const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, collapsed })
           )}
         </div>
 
-        {/* Load Demo Data Button */}
+        {/* Discover Live Jobs Button */}
         <button
-          onClick={() => seedDemoData.mutate()}
-          disabled={seedDemoData.isPending}
+          onClick={() => discoverJobs.mutate("all")}
+          disabled={discoverJobs.isPending}
           className="fluent-button fluent-button-secondary text-xs py-1.5 px-3 hidden md:inline-flex"
-          title="Seed realistic demo jobs & queue records"
+          title="Search live job feeds"
         >
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span>{seedDemoData.isPending ? "Seeding..." : "Load Demo Data"}</span>
+          <span>{discoverJobs.isPending ? "Searching..." : "Discover Jobs"}</span>
         </button>
 
         {/* Theme Toggle */}

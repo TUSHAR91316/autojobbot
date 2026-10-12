@@ -20,7 +20,7 @@ import { Link } from "react-router-dom";
 
 export const DashboardPage: React.FC = () => {
   const { data: stats, isLoading } = useDashboardStats();
-  const { startAutomation, pauseAutomation, resumeAutomation, stopAutomation, seedDemoData } = useAppMutations();
+  const { startAutomation, pauseAutomation, resumeAutomation, stopAutomation, discoverJobs } = useAppMutations();
 
   if (isLoading) {
     return (
@@ -93,7 +93,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Zero State / Demo Seed Banner */}
+      {/* Zero State Banner */}
       {stats?.jobs_discovered === 0 && (
         <div className="fluent-card p-5 border-primary/30 bg-primary/5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -101,19 +101,19 @@ export const DashboardPage: React.FC = () => {
               <Sparkles className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Welcome to ApplyPilot!</h3>
+              <h3 className="text-sm font-semibold text-text-primary">Ready to discover jobs!</h3>
               <p className="text-xs text-text-muted">
-                Your local database is fresh and empty. You can discover permitted public feeds or seed realistic demo data to explore features.
+                Your local database has no jobs yet. Search real remote & tech feeds or paste any direct job link to start matching.
               </p>
             </div>
           </div>
           <button
-            onClick={() => seedDemoData.mutate()}
-            disabled={seedDemoData.isPending}
+            onClick={() => discoverJobs.mutate("all")}
+            disabled={discoverJobs.isPending}
             className="fluent-button fluent-button-primary text-xs shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Load Demo Data</span>
+            <span>{discoverJobs.isPending ? "Searching Feeds..." : "Discover Live Jobs"}</span>
           </button>
         </div>
       )}

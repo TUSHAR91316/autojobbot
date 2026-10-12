@@ -209,6 +209,8 @@ export interface SessionProgress {
   current_action?: string;
   session_id?: string;
   started_at?: string;
+  simulation_mode?: boolean;
+  browser_launched?: boolean;
 }
 
 export interface DashboardStats {

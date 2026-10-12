@@ -1,13 +1,11 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from backend.app.database.session import SessionLocal
 from backend.app.models.application import JobApplication, ApplicationStatus
-from backend.app.models.job import JobListing
-from backend.app.models.profile import CandidateProfile
-from backend.app.models.settings import AutomationSettings, JobPreferences
+from backend.app.models.settings import AutomationSettings
 from backend.app.core.logging import log_activity
 
 logger = logging.getLogger("applypilot.task_manager")
@@ -24,7 +22,7 @@ class TaskManager:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(TaskManager, cls).__new__(cls)
-            cls._instance._init_state()
+            cls._instance._initialized = False
         return cls._instance
 
     def _init_state(self):
@@ -43,13 +41,23 @@ class TaskManager:
         self.current_action: Optional[str] = None
         self.started_at: Optional[datetime] = None
         self.ended_at: Optional[datetime] = None
-        
+
         self._task: Optional[asyncio.Task] = None
-        self._pause_event: asyncio.Event = asyncio.Event()
-        self._pause_event.set()  # Not paused initially
+        # Lazily created inside async context
+        self._pause_event: Optional[asyncio.Event] = None
         self._stop_requested: bool = False
+        self._initialized = True
+
+    def _get_pause_event(self) -> asyncio.Event:
+        """Return pause event, creating it in the running loop if needed."""
+        if self._pause_event is None:
+            self._pause_event = asyncio.Event()
+            self._pause_event.set()  # Not paused initially
+        return self._pause_event
 
     def get_status(self) -> Dict[str, Any]:
+        if not getattr(self, '_initialized', False):
+            self._init_state()
         return {
             "is_active": self.is_active,
             "is_paused": self.is_paused,
@@ -67,6 +75,9 @@ class TaskManager:
         }
 
     def start_session(self, target: Optional[int] = None, delay: Optional[float] = None) -> Dict[str, Any]:
+        if not getattr(self, '_initialized', False):
+            self._init_state()
+
         if self.is_active and not self._stop_requested:
             return {"success": False, "message": "A session is already active", "status": self.get_status()}
 
@@ -85,6 +96,8 @@ class TaskManager:
             self.is_paused = False
             self.status = "RUNNING"
             self._stop_requested = False
+            # Reset and recreate pause event in the current event loop
+            self._pause_event = asyncio.Event()
             self._pause_event.set()
             self.processed_count = 0
             self.submitted_count = 0
@@ -109,76 +122,87 @@ class TaskManager:
             db.close()
 
     def pause_session(self) -> Dict[str, Any]:
+        if not getattr(self, '_initialized', False):
+            self._init_state()
         if not self.is_active or self.is_paused:
             return {"success": False, "message": "No running session to pause", "status": self.get_status()}
-        
+
         self.is_paused = True
         self.status = "PAUSED"
-        self._pause_event.clear()
+        evt = self._get_pause_event()
+        evt.clear()
         self.current_action = "Session paused by user"
-        
+
         db = SessionLocal()
         try:
             log_activity(db, "ACTION", "SESSION_PAUSE", f"Paused session {self.session_id}")
         finally:
             db.close()
-            
+
         return {"success": True, "message": "Session paused", "status": self.get_status()}
 
     def resume_session(self) -> Dict[str, Any]:
+        if not getattr(self, '_initialized', False):
+            self._init_state()
         if not self.is_active or not self.is_paused:
             return {"success": False, "message": "Session is not paused", "status": self.get_status()}
-            
+
         self.is_paused = False
         self.status = "RUNNING"
-        self._pause_event.set()
+        evt = self._get_pause_event()
+        evt.set()
         self.current_action = "Resuming processing"
-        
+
         db = SessionLocal()
         try:
             log_activity(db, "ACTION", "SESSION_RESUME", f"Resumed session {self.session_id}")
         finally:
             db.close()
-            
+
         return {"success": True, "message": "Session resumed", "status": self.get_status()}
 
     def stop_session(self) -> Dict[str, Any]:
+        if not getattr(self, '_initialized', False):
+            self._init_state()
         if not self.is_active:
             return {"success": False, "message": "No active session to stop", "status": self.get_status()}
-            
+
         self._stop_requested = True
         self.status = "STOPPING"
         self.current_action = "Stopping session"
-        self._pause_event.set()  # Unblock if paused so worker can exit gracefully
-        
+        evt = self._get_pause_event()
+        evt.set()  # Unblock if paused so worker can exit gracefully
+
         db = SessionLocal()
         try:
             log_activity(db, "ACTION", "SESSION_STOP", f"Immediate stop requested for session {self.session_id}")
         finally:
             db.close()
-            
+
         return {"success": True, "message": "Stop requested", "status": self.get_status()}
 
     async def _run_session_worker(self):
         """Main bounded worker processing applications one by one with strict concurrency=1"""
         from backend.app.automation.simulator import process_application_workflow
-        
+
+        if not getattr(self, '_initialized', False):
+            self._init_state()
+
         logger.info(f"Worker started for session {self.session_id}")
-        
+        pause_event = self._get_pause_event()
+
         try:
             while self.is_active and not self._stop_requested and self.submitted_count < self.target_count:
                 # 1. Wait if paused
-                await self._pause_event.wait()
+                await pause_event.wait()
                 if self._stop_requested:
                     break
 
                 # 2. Fetch next eligible queued application
                 db = SessionLocal()
                 app_obj = None
-                settings_obj = None
                 try:
                     settings_obj = db.query(AutomationSettings).first()
-                    # Check failure limit
                     max_failures = settings_obj.stop_after_failures if settings_obj else 3
                     if self.failed_count >= max_failures:
                         log_activity(
@@ -187,7 +211,6 @@ class TaskManager:
                         )
                         break
 
-                    # Retrieve next QUEUED or READY_TO_SUBMIT application
                     app_obj = db.query(JobApplication).filter(
                         JobApplication.status.in_([
                             ApplicationStatus.QUEUED.value,
@@ -198,7 +221,6 @@ class TaskManager:
                     db.close()
 
                 if not app_obj:
-                    # Queue exhausted
                     db = SessionLocal()
                     try:
                         log_activity(db, "INFO", "QUEUE_EXHAUSTED", "No more applications in queue to process")
@@ -215,7 +237,7 @@ class TaskManager:
                 res = await process_application_workflow(
                     app_id=app_obj.id,
                     session_id=self.session_id,
-                    pause_event=self._pause_event,
+                    pause_event=pause_event,
                     check_stop=lambda: self._stop_requested
                 )
 
@@ -235,7 +257,7 @@ class TaskManager:
                     for _ in range(delay_slices):
                         if self._stop_requested:
                             break
-                        await self._pause_event.wait()
+                        await pause_event.wait()
                         await asyncio.sleep(0.1)
 
         except asyncio.CancelledError:
@@ -253,7 +275,7 @@ class TaskManager:
             self.status = "IDLE"
             self.current_action = "Session completed"
             self.ended_at = datetime.utcnow()
-            
+
             db = SessionLocal()
             try:
                 log_activity(
@@ -271,3 +293,5 @@ class TaskManager:
 
 
 task_manager = TaskManager()
+# Force init at import time safely (no asyncio needed for basic state)
+task_manager._init_state()

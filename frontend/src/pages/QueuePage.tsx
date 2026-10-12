@@ -32,6 +32,7 @@ export const QueuePage: React.FC = () => {
     skipApplication,
     approveApplication,
     markManualApplied,
+    applySingleJobInBrowser,
   } = useAppMutations();
 
   const [reviewApp, setReviewApp] = useState<JobApplication | null>(null);
@@ -190,6 +191,17 @@ export const QueuePage: React.FC = () => {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 self-end sm:self-center">
+                      {/* Direct Live Browser Apply Button */}
+                      <button
+                        onClick={() => applySingleJobInBrowser.mutate(app.job_id)}
+                        disabled={applySingleJobInBrowser.isPending || app.status === "SUBMITTED"}
+                        className="fluent-button bg-primary text-slate-900 hover:bg-primaryHover text-xs py-1.5 px-3 font-semibold flex items-center gap-1"
+                        title="Launch visible desktop browser and apply right now"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Apply in Browser</span>
+                      </button>
+
                       <button
                         onClick={() => setReviewApp(app)}
                         className="fluent-button fluent-button-secondary text-xs py-1.5 px-3"

@@ -1,19 +1,38 @@
-from typing import Optional
+from typing import Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Body
+from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
+
 from backend.app.database.session import get_db
 from backend.app.models.application import JobApplication, ApplicationStatus
 from backend.app.models.job import JobListing
+from backend.app.models.profile import CandidateProfile
+from backend.app.models.resume import ResumeVersion
 from backend.app.models.settings import AutomationSettings
 from backend.app.services.task_manager import task_manager
+from backend.app.services.cover_letter import generate_truthful_cover_letter
 from backend.app.core.logging import log_activity
+from backend.app.automation.browser import browser_manager
+from backend.app.automation.simulator import execute_live_browser_apply
 
 router = APIRouter(prefix="/automation", tags=["Automation Controls"])
 
 
+class DirectUrlApplyRequest(BaseModel):
+    url: str
+    title: Optional[str] = "Job Position"
+    company: Optional[str] = "Company"
+
+
 @router.get("/status")
-def get_automation_status():
-    return task_manager.get_status()
+def get_automation_status(db: Session = Depends(get_db)):
+    base_status = task_manager.get_status()
+    settings_obj = db.query(AutomationSettings).first()
+    b_status = browser_manager.get_status()
+    base_status["simulation_mode"] = settings_obj.simulation_mode if settings_obj else False
+    base_status["browser_launched"] = b_status.get("is_launched", False)
+    return base_status
 
 
 @router.post("/start")
@@ -45,6 +64,275 @@ def stop_automation():
     return task_manager.stop_session()
 
 
+@router.post("/toggle-simulation")
+def toggle_simulation_mode(db: Session = Depends(get_db)):
+    """Toggle between Live Browser Automation and Dry Run Simulation"""
+    settings_obj = db.query(AutomationSettings).first()
+    if not settings_obj:
+        settings_obj = AutomationSettings(simulation_mode=False)
+        db.add(settings_obj)
+    else:
+        settings_obj.simulation_mode = not settings_obj.simulation_mode
+
+    db.commit()
+    mode_str = "Simulation (Dry Run)" if settings_obj.simulation_mode else "Live Browser Automation (Real Chrome)"
+    log_activity(db, "ACTION", "MODE_TOGGLE", f"Switched mode to: {mode_str}")
+    return {"success": True, "simulation_mode": settings_obj.simulation_mode, "mode_label": mode_str}
+
+
+@router.get("/browser/status")
+def get_browser_status():
+    """Check if the visible desktop browser window is currently open"""
+    return browser_manager.get_status()
+
+
+@router.get("/browser/sessions")
+async def get_browser_sessions_status():
+    """Check active login sessions (LinkedIn, Indeed, Naukri, Google) in browser profile"""
+    return await browser_manager.get_saved_sessions_status()
+
+
+@router.post("/browser/login")
+async def open_portal_login(site: str = "linkedin"):
+    """
+    Launch desktop browser specifically to sign into a job portal.
+    Credentials and cookies are permanently saved in ApplyPilot's local profile.
+    """
+    try:
+        return await browser_manager.open_login_session(site=site)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open login page: {str(e)}")
+
+
+@router.post("/browser/connect-cdp")
+async def connect_to_running_chrome(cdp_url: str = "http://127.0.0.1:9222"):
+    """
+    Connect Playwright directly to an existing Google Chrome instance started with:
+    chrome.exe --remote-debugging-port=9222
+    """
+    try:
+        page = await browser_manager.connect_to_chrome_cdp(cdp_url=cdp_url)
+        return {
+            "success": True,
+            "message": f"Successfully connected to your running Chrome instance at {cdp_url}!",
+            "current_title": await page.title()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect to Chrome at {cdp_url}. Ensure Chrome was started with --remote-debugging-port=9222: {str(e)}")
+
+
+@router.post("/browser/launch")
+async def launch_desktop_browser():
+    """Explicitly launch the desktop browser window for user viewing"""
+    try:
+        page = await browser_manager.get_or_launch_page(headless=False)
+        await page.goto("http://127.0.0.1:5173", wait_until="domcontentloaded", timeout=15000)
+        return {"success": True, "message": "Visible desktop browser launched successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to launch browser: {str(e)}")
+
+
+@router.post("/browser/close")
+async def close_desktop_browser():
+    """Close the desktop browser window cleanly"""
+    await browser_manager.close()
+    return {"success": True, "message": "Browser closed"}
+
+
+@router.post("/browser/apply-job/{job_id}")
+async def apply_single_job_in_browser(job_id: int, db: Session = Depends(get_db)):
+    """
+    Launch visible desktop browser and apply directly to this specific job!
+    Autofills candidate profile, attaches resume, and submits or prepares for review.
+    """
+    job = db.query(JobListing).filter(JobListing.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    profile = db.query(CandidateProfile).first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile is missing. Please save profile first.")
+
+    primary_resume = db.query(ResumeVersion).filter(ResumeVersion.is_primary == True).first()
+    if not primary_resume:
+        primary_resume = db.query(ResumeVersion).first()
+
+    # Find or create application record
+    app = db.query(JobApplication).filter(JobApplication.job_id == job_id).first()
+    if not app:
+        app = JobApplication(
+            job_id=job.id,
+            status=ApplicationStatus.PREPARING.value,
+            last_action="User triggered direct Live Browser Apply"
+        )
+        db.add(app)
+        db.commit()
+        db.refresh(app)
+
+    cover_letter = generate_truthful_cover_letter(profile, job)
+    resume_path = primary_resume.file_path if primary_resume else None
+
+    app.status = ApplicationStatus.PREPARING.value
+    app.cover_letter = cover_letter
+    app.resume_version_id = primary_resume.id if primary_resume else None
+    app.last_action = f"Opening visible browser to apply at {job.original_url}"
+    db.commit()
+
+    log_activity(
+        db, "ACTION", "BROWSER_APPLY_START",
+        f"Launching browser to apply for '{job.title}' at {job.company}",
+        job_id=job.id, application_id=app.id
+    )
+
+    result = await execute_live_browser_apply(
+        url=job.original_url,
+        profile=profile,
+        job=job,
+        resume_path=resume_path,
+        cover_letter=cover_letter,
+        auto_submit=True
+    )
+
+    outcome = result.get("outcome")
+    steps = result.get("steps_completed", [])
+    shot = result.get("screenshot", "")
+
+    if outcome == "SUBMITTED":
+        app.status = ApplicationStatus.SUBMITTED.value
+        app.applied_at = datetime.utcnow()
+        app.last_action = f"Submitted via Live Browser ({len(steps)} steps completed)"
+        app.screenshot_path = shot
+        job.status = "APPLIED"
+        db.commit()
+        log_activity(
+            db, "SUCCESS", "BROWSER_APPLY_SUBMIT",
+            f"Submitted application for '{job.title}' via Live Browser. Steps: {steps}",
+            job_id=job.id, application_id=app.id
+        )
+    else:
+        app.status = ApplicationStatus.MANUAL_ACTION_REQUIRED.value
+        app.last_action = result.get("message", "Browser filled form; manual review needed")
+        app.screenshot_path = shot
+        app.external_portal_url = job.original_url
+        db.commit()
+        log_activity(
+            db, "INFO", "BROWSER_APPLY_PARTIAL",
+            f"Browser navigated and filled {len(steps)} fields for '{job.title}'. Session kept open.",
+            job_id=job.id, application_id=app.id
+        )
+
+    return {
+        "success": True,
+        "application_id": app.id,
+        "outcome": outcome,
+        "message": result.get("message"),
+        "steps_completed": steps,
+        "screenshot": shot,
+    }
+
+
+@router.post("/browser/apply-url")
+async def apply_custom_url_in_browser(
+    data: DirectUrlApplyRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Launch visible desktop browser and navigate directly to ANY user-provided job URL.
+    Autofills credentials, uploads active resume, and applies on behalf of the user.
+    """
+    url_str = data.url.strip()
+    if not url_str.startswith("http"):
+        url_str = "https://" + url_str
+
+    profile = db.query(CandidateProfile).first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile is missing. Please save profile first.")
+
+    primary_resume = db.query(ResumeVersion).filter(ResumeVersion.is_primary == True).first()
+    if not primary_resume:
+        primary_resume = db.query(ResumeVersion).first()
+
+    # Create temporary or saved JobListing
+    existing_job = db.query(JobListing).filter(JobListing.original_url == url_str).first()
+    if not existing_job:
+        existing_job = JobListing(
+            title=data.title or "Direct URL Position",
+            company=data.company or "Direct Employer",
+            original_url=url_str,
+            normalized_url=url_str,
+            source_platform="direct_url",
+            status="QUEUED",
+            match_score=85.0
+        )
+        db.add(existing_job)
+        db.commit()
+        db.refresh(existing_job)
+
+    # Create application record
+    app = db.query(JobApplication).filter(JobApplication.job_id == existing_job.id).first()
+    if not app:
+        app = JobApplication(
+            job_id=existing_job.id,
+            status=ApplicationStatus.PREPARING.value,
+            last_action="User triggered Direct URL Browser Apply"
+        )
+        db.add(app)
+        db.commit()
+        db.refresh(app)
+
+    cover_letter = generate_truthful_cover_letter(profile, existing_job)
+    resume_path = primary_resume.file_path if primary_resume else None
+
+    app.status = ApplicationStatus.PREPARING.value
+    app.cover_letter = cover_letter
+    app.resume_version_id = primary_resume.id if primary_resume else None
+    app.last_action = f"Opening visible browser to apply at {url_str}"
+    db.commit()
+
+    log_activity(
+        db, "ACTION", "BROWSER_DIRECT_URL_START",
+        f"Launching browser to apply to URL: {url_str}",
+        job_id=existing_job.id, application_id=app.id
+    )
+
+    result = await execute_live_browser_apply(
+        url=url_str,
+        profile=profile,
+        job=existing_job,
+        resume_path=resume_path,
+        cover_letter=cover_letter,
+        auto_submit=True
+    )
+
+    outcome = result.get("outcome")
+    steps = result.get("steps_completed", [])
+    shot = result.get("screenshot", "")
+
+    if outcome == "SUBMITTED":
+        app.status = ApplicationStatus.SUBMITTED.value
+        app.applied_at = datetime.utcnow()
+        app.last_action = f"Submitted via Live Browser ({len(steps)} steps)"
+        app.screenshot_path = shot
+        existing_job.status = "APPLIED"
+        db.commit()
+    else:
+        app.status = ApplicationStatus.MANUAL_ACTION_REQUIRED.value
+        app.last_action = result.get("message", "Browser filled form; manual review needed")
+        app.screenshot_path = shot
+        app.external_portal_url = url_str
+        db.commit()
+
+    return {
+        "success": True,
+        "application_id": app.id,
+        "job_id": existing_job.id,
+        "outcome": outcome,
+        "message": result.get("message"),
+        "steps_completed": steps,
+        "screenshot": shot,
+    }
+
+
 @router.post("/retry-failed")
 def retry_failed(db: Session = Depends(get_db)):
     """Reset failed applications back to QUEUED for another attempt"""
@@ -69,7 +357,6 @@ def auto_build_queue(
     settings_obj = db.query(AutomationSettings).first() or AutomationSettings()
     min_score = settings_obj.min_match_score
 
-    # Find jobs not yet in applications with score >= min_score
     existing_job_ids = [r[0] for r in db.query(JobApplication.job_id).all()]
     candidate_jobs = db.query(JobListing).filter(
         JobListing.id.notin_(existing_job_ids),

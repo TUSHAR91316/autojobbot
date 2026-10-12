@@ -18,7 +18,7 @@ class AutomationSettings(Base):
     stop_after_failures = Column(Integer, default=3)
     skip_duplicates = Column(Boolean, default=True)
     stop_on_captcha_mfa = Column(Boolean, default=True)
-    simulation_mode = Column(Boolean, default=True)  # Safe simulation mode on by default
+    simulation_mode = Column(Boolean, default=False)  # Live browser automation enabled by default
     log_retention_days = Column(Integer, default=30)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

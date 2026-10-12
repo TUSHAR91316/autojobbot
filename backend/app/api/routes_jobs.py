@@ -12,7 +12,6 @@ from backend.app.services.matcher import evaluate_job_match
 from backend.app.services.duplicate import check_for_duplicate_job, normalize_job_url
 from backend.app.providers.remoteok import RemoteOKProvider
 from backend.app.providers.jobicy import JobicyProvider
-from backend.app.providers.mock_provider import MockJobProvider
 from backend.app.providers.csv_provider import parse_csv_jobs, export_jobs_to_csv
 from backend.app.core.logging import log_activity
 
@@ -87,7 +86,7 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/discover")
 async def discover_jobs(
-    source: str = Query("all", description="Source provider: all, remoteok, jobicy, synthetic_demo"),
+    source: str = Query("all", description="Source provider: all, remoteok, jobicy"),
     db: Session = Depends(get_db)
 ):
     profile = db.query(CandidateProfile).first() or CandidateProfile()
@@ -99,8 +98,6 @@ async def discover_jobs(
         providers.append(RemoteOKProvider())
     if source in ["all", "jobicy"]:
         providers.append(JobicyProvider())
-    if source in ["all", "synthetic_demo"] or (source == "all" and settings_obj.simulation_mode):
-        providers.append(MockJobProvider())
 
     discovered_count = 0
     duplicates_skipped = 0

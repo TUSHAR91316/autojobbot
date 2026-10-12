@@ -27,10 +27,14 @@ ApplyPilot is a production-quality, local-first job application assistant built 
    - Bulk CSV job import and CSV export.
    - Realistic synthetic demo listings for offline testing.
 
-4. **Multi-Version Resume Management**:
-   - PDF and DOCX local text extraction and validation.
-   - Labeling and target category assignment.
-   - Truthful candidate profile: Never fabricates degrees, credentials, or past employers.
+4. **Multi-Format & Multi-Version Resume Management**:
+   - **LaTeX Support (.tex)**: Ingests `.tex` files or pasted LaTeX source, cleans formatting macros, preambles, and environments while preserving structure, headings, and unescaped entities.
+   - **PDF Support (.pdf)**: Local text extraction and metadata validation.
+   - **Word Support (.docx, .doc)**: Paragraph and table text extraction.
+   - **Plain Text & Markdown Support (.txt, .md)**: Ingests plain text files or raw pasted resume text.
+   - **Direct Paste / Editor**: Quick creation tab to paste LaTeX code or plain text directly.
+   - **Text Inspector**: Modal viewer to inspect extracted plain text from any version to verify parsing quality.
+   - **Truthful Candidate Profile**: Never fabricates degrees, credentials, or past employers. Missing data triggers review.
 
 5. **Stateful Application Workflow**:
    - Explicit state machine: `DISCOVERED` -> `MATCHED` -> `QUEUED` -> `PREPARING` -> `AWAITING_REVIEW` -> `READY_TO_SUBMIT` -> `SUBMITTED` / `MANUAL_ACTION_REQUIRED` / `FAILED` / `SKIPPED`.

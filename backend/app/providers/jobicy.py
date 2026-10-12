@@ -31,6 +31,13 @@ class JobicyProvider(BaseJobProvider):
                         salary_min = item.get("annualSalaryMin")
                         salary_max = item.get("annualSalaryMax")
                         
+                        skills = []
+                        ind = item.get("jobIndustry")
+                        if isinstance(ind, list):
+                            skills.extend([str(x) for x in ind if x])
+                        elif isinstance(ind, str) and ind.strip():
+                            skills.append(ind.strip())
+
                         job_dict = {
                             "title": item.get("jobTitle", "Software Engineer"),
                             "company": item.get("companyName", "Tech Employer"),
@@ -42,7 +49,7 @@ class JobicyProvider(BaseJobProvider):
                             "salary_currency": item.get("salaryCurrency", "USD"),
                             "experience_min_years": 2.0,
                             "experience_level": item.get("jobLevel", "mid"),
-                            "required_skills": [item.get("jobIndustry", "Technology")] if item.get("jobIndustry") else [],
+                            "required_skills": skills,
                             "description": item.get("jobDescription", ""),
                             "source_platform": "jobicy",
                             "original_url": item.get("url", ""),
