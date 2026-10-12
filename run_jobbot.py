@@ -29,11 +29,14 @@ async def main():
                         help="Target jobsite: linkedin, indeed, naukri, or all (default: linkedin)")
     parser.add_argument("--keywords", type=str, default="Python Developer", help="Search job title or keywords")
     parser.add_argument("--location", type=str, default="Bengaluru, Karnataka, India", help="Search location (e.g. Bengaluru, India, Remote)")
-    parser.add_argument("--max-jobs", type=int, default=5, help="Maximum jobs to apply for (default: 5)")
+    parser.add_argument("--max-jobs", type=int, default=5, help="Maximum jobs to apply for (default: 5, 0=unlimited)")
     parser.add_argument("--delay", type=float, default=4.0, help="Base delay in seconds between job applications (default: 4.0s)")
     parser.add_argument("--non-stop", action="store_true", help="Run in continuous non-stop mode with anti-ban cooldown breathers")
+    parser.add_argument("--unlimited", action="store_true", help="Apply UNLIMITED jobs across all pages until relevant jobs run out")
     parser.add_argument("--review", action="store_true", help="Stage applications for review instead of auto-submitting")
     args = parser.parse_args()
+
+    is_unlimited = args.unlimited or args.max_jobs <= 0
 
     print("\n" + "="*70)
     print("🚀 ApplyPilot: Universal Multi-Jobsite Autonomous Robot")
@@ -41,8 +44,8 @@ async def main():
     print(f"🌐 Platform: {args.platform.upper()}")
     print(f"🎯 Keywords: {args.keywords}")
     print(f"📍 Location: {args.location}")
-    print(f"🔢 Target Jobs: {args.max_jobs} {'(Continuous Non-Stop Mode)' if args.non_stop else ''}")
-    print(f"⏱️ Base Delay: {args.delay}s (+ natural anti-ban human jitter)")
+    print(f"🔢 Target Jobs: {'∞ UNLIMITED (Runs till relevant jobs run out)' if is_unlimited else f'{args.max_jobs} jobs'} {'(Continuous Non-Stop Mode)' if args.non_stop else ''}")
+    print(f"⏱️ Base Delay: {args.delay}s (+ natural anti-ban human jitter & cooldowns)")
     print(f"⚙️ Execution Mode: {'Staged Review' if args.review else 'Auto-Submit'}")
     print("="*70)
 
@@ -83,17 +86,18 @@ async def main():
             profile=profile,
             resume_path=resume_path,
             cover_letter=cover_letter,
-            max_jobs=args.max_jobs,
+            max_jobs=999999 if is_unlimited else args.max_jobs,
             delay_seconds=args.delay,
             auto_submit=not args.review,
             non_stop=args.non_stop,
+            unlimited=is_unlimited,
         )
 
         print("\n" + "="*70)
         print("📊 Execution Summary:")
         print(f"Outcome: {res.get('outcome')}")
         print(f"Message: {res.get('message', 'Completed successfully')}")
-        print(f"Total Applied: {res.get('jobs_applied', 0)} / {args.max_jobs}")
+        print(f"Total Applied: {res.get('jobs_applied', 0)} {'(Unlimited Mode)' if is_unlimited else f'/ {args.max_jobs}'}")
         print("="*70)
 
         for app in res.get("applications", []):

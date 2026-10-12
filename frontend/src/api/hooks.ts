@@ -577,6 +577,7 @@ export const useAppMutations = () => {
       delaySeconds = 4,
       autoSubmit = true,
       nonStop = false,
+      unlimited = false,
     }: {
       platform?: string;
       keywords?: string;
@@ -585,6 +586,7 @@ export const useAppMutations = () => {
       delaySeconds?: number;
       autoSubmit?: boolean;
       nonStop?: boolean;
+      unlimited?: boolean;
     }) => {
       const res = await apiClient.post("/automation/universal/auto-apply", {
         platform,
@@ -594,6 +596,7 @@ export const useAppMutations = () => {
         delay_seconds: delaySeconds,
         auto_submit: autoSubmit,
         non_stop: nonStop,
+        unlimited,
       });
       return res.data;
     },

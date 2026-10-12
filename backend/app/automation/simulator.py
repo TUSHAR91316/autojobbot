@@ -1142,23 +1142,15 @@ async def execute_linkedin_auto_search_and_apply(
     max_jobs: int = 5,
     delay_seconds: float = 4.0,
     auto_submit: bool = True,
+    unlimited: bool = False,
 ) -> Dict[str, Any]:
     """
     Automated LinkedIn Easy Apply search & apply robot.
-    1. Launches visible desktop Chromium Playwright session with user's saved profile & cookies.
-    2. Navigates to LinkedIn Jobs Search query with Easy Apply filter enabled (f_AL=true).
-    3. Simulates realistic cursor movement to the 'Easy Apply' filter button and clicks/toggles it.
-    4. Iterates through search result job cards one by one:
-       - Moves cursor to job card, clicks to open details.
-       - Checks for the 'Easy Apply' button.
-       - Clicks 'Easy Apply' button.
-       - Fills phone, email, resume, work auth, experience, CTC, notice period, and answers screening questionnaires.
-       - Clicks through multi-step screens (Next/Review).
-       - Submits application (or stages for review), and dismisses completion confirmation dialog.
-       - Captures screenshots & persists application in local SQLite database.
-       - Observes user-configured delay between applications with human jitter.
+    Supports UNLIMITED mode: paginates through search pages non-stop until all relevant jobs run out.
+    Enforces anti-ban human delay and safety cooldowns to keep accounts completely safe.
     """
-    logger.info(f"Starting LinkedIn Auto-Pilot: keywords='{keywords}', location='{location}', max_jobs={max_jobs}, delay={delay_seconds}s")
+    target_limit_desc = "∞ UNLIMITED (Runs till relevant jobs run out)" if (unlimited or max_jobs <= 0) else f"Target {max_jobs} jobs"
+    logger.info(f"Starting LinkedIn Auto-Pilot: keywords='{keywords}', location='{location}', {target_limit_desc}, delay={delay_seconds}s")
 
     if profile is None:
         db = SessionLocal()
@@ -1219,7 +1211,6 @@ async def execute_linkedin_auto_search_and_apply(
         if await loc.count() > 0 and await loc.is_visible():
             box = await loc.bounding_box()
             if box:
-                # Animate cursor movement across the screen
                 await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=12)
                 await page.wait_for_timeout(300)
                 is_checked = await loc.get_attribute("aria-checked")
@@ -1228,192 +1219,255 @@ async def execute_linkedin_auto_search_and_apply(
                     await page.wait_for_timeout(2500)
             break
 
-    # Discover and iterate over job cards
+    # Discover and iterate over job cards across pages
     applied_jobs = []
     processed_count = 0
-    max_loops = max_jobs * 3  # headroom for skipping already applied jobs
+    seen_job_urls = set()
+    current_page_num = 1
+    max_pages = 50 if (unlimited or max_jobs <= 0) else max(2, (max_jobs // 10) + 2)
+    target_cap = 999999 if (unlimited or max_jobs <= 0) else max_jobs
+    is_exhausted = False
 
-    for loop_i in range(max_loops):
-        if len(applied_jobs) >= max_jobs:
+    while True:
+        if len(applied_jobs) >= target_cap:
+            logger.info(f"[LinkedIn Auto-Pilot] Reached target application count ({len(applied_jobs)}/{target_cap}).")
             break
+        if current_page_num > max_pages:
+            logger.info(f"[LinkedIn Auto-Pilot] Processed maximum {max_pages} pages. Stopping.")
+            break
+
+        logger.info(f"[LinkedIn Auto-Pilot] Traversing Page {current_page_num}...")
+
+        # Scroll list down incrementally to load all lazy-rendered cards
+        for _ in range(4):
+            await page.evaluate("""() => {
+                const list = document.querySelector('.jobs-search-results-list, .scaffold-layout__list-container');
+                if (list) list.scrollTop += 500;
+            }""")
+            await page.wait_for_timeout(500)
 
         # Query job cards
         cards = page.locator(
             "div.job-card-container, li.jobs-search-results__list-item, li[data-occludable-job-id]"
         )
         total_cards = await cards.count()
+
         if total_cards == 0:
-            logger.warning("[LinkedIn Auto-Pilot] No job cards rendered yet, scrolling page...")
-            await page.evaluate("""() => {
-                const list = document.querySelector('.jobs-search-results-list, .scaffold-layout__list-container');
-                if (list) list.scrollTop += 300;
-            }""")
-            await page.wait_for_timeout(2000)
-            cards = page.locator("div.job-card-container, li.jobs-search-results__list-item, li[data-occludable-job-id]")
-            total_cards = await cards.count()
-            if total_cards == 0:
-                logger.warning("[LinkedIn Auto-Pilot] No job cards found in search results.")
+            logger.warning(f"[LinkedIn Auto-Pilot] No job cards found on page {current_page_num}. Relevant jobs ran out.")
+            is_exhausted = True
+            break
+
+        new_cards_processed_on_page = 0
+
+        for card_idx in range(total_cards):
+            if len(applied_jobs) >= target_cap:
                 break
 
-        target_idx = loop_i % total_cards
-        card = cards.nth(target_idx)
+            card = cards.nth(card_idx)
 
-        try:
-            # Scroll list to bring card into view
-            await page.evaluate("""(idx) => {
-                const list = document.querySelector('.jobs-search-results-list, .scaffold-layout__list-container');
-                if (list) list.scrollTop += 180;
-            }""", target_idx)
-            await page.wait_for_timeout(600)
-
-            # Smooth cursor move to the job card
-            box = await card.bounding_box()
-            if box:
-                await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=10)
-                await page.wait_for_timeout(200)
-                await card.click()
-            else:
-                await card.click()
-
-            await page.wait_for_timeout(2000)
-            processed_count += 1
-
-            # Extract job details from right-hand pane
-            title_loc = page.locator(
-                "h1.t-24, .job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title"
-            ).first
-            job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
-
-            comp_loc = page.locator(
-                ".job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name, a[href*='/company/']"
-            ).first
-            company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "LinkedIn Employer"
-
-            loc_loc = page.locator(
-                ".job-details-jobs-unified-top-card__primary-description-container, .jobs-unified-top-card__bullet"
-            ).first
-            job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
-
-            current_job_url = page.url
-
-            # Check if already applied
-            applied_badge = page.locator(
-                "span:has-text('Applied'), div:has-text('Applied '), .jobs-s-apply__application-link"
-            ).first
-            if await applied_badge.count() > 0 and await applied_badge.is_visible():
-                logger.info(f"[LinkedIn Auto-Pilot] Already applied to '{job_title}' at {company_name}. Skipping.")
-                continue
-
-            # Look for Easy Apply button on details pane
-            easy_btn = page.locator(
-                "button.jobs-apply-button:has-text('Easy Apply'), "
-                "div.jobs-apply-button--top-card button:has-text('Easy Apply'), "
-                "button:has-text('Easy Apply'), "
-                "button[aria-label*='Easy Apply' i]"
-            ).first
-
-            if await easy_btn.count() == 0 or not await easy_btn.is_visible():
-                logger.info(f"[LinkedIn Auto-Pilot] '{job_title}' does not have Easy Apply button (external apply). Skipping.")
-                continue
-
-            # Cursor animation to Easy Apply button & click!
-            btn_box = await easy_btn.bounding_box()
-            if btn_box:
-                await page.mouse.move(btn_box["x"] + btn_box["width"] / 2, btn_box["y"] + btn_box["height"] / 2, steps=10)
+            try:
+                await card.scroll_into_view_if_needed()
                 await page.wait_for_timeout(300)
-            await easy_btn.click()
-            await page.wait_for_timeout(2000)
 
-            # Execute multi-step Easy Apply modal workflow
-            apply_res = await workflow_linkedin_easy_apply(
-                page=page,
-                profile=profile,
-                job=None,
-                resume_path=resume_path,
-                cover_letter=cover_letter,
-                auto_submit=auto_submit,
-            )
+                # Extract link for deduplication
+                link_el = card.locator("a.job-card-list__title, a.job-card-container__link, a[href*='/jobs/view/']").first
+                href = (await link_el.get_attribute("href")) if await link_el.count() > 0 else ""
+                clean_href = href.split("?")[0] if href else ""
 
-            shot = await browser_manager.capture_screenshot(page, f"linkedin_{len(applied_jobs) + 1}")
-            outcome = apply_res.get("outcome", "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED")
+                if clean_href and clean_href in seen_job_urls:
+                    continue
+                if clean_href:
+                    seen_job_urls.add(clean_href)
 
-            record = {
-                "index": len(applied_jobs) + 1,
-                "title": job_title,
-                "company": company_name,
-                "location": job_location,
-                "url": current_job_url,
-                "outcome": outcome,
-                "steps_completed": apply_res.get("steps_completed", []),
-                "screenshot": shot,
-            }
-            applied_jobs.append(record)
-            logger.info(f"[LinkedIn Auto-Pilot] Completed {len(applied_jobs)}/{max_jobs}: {job_title} at {company_name} -> {outcome}")
+                new_cards_processed_on_page += 1
 
-            # Persist application in SQLite DB
-            try:
-                db = SessionLocal()
+                # Smooth cursor move to the job card
+                box = await card.bounding_box()
+                if box:
+                    await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+                    await page.wait_for_timeout(200)
+                    await card.click()
+                else:
+                    await card.click()
+
+                await page.wait_for_timeout(1800)
+                processed_count += 1
+
+                # Extract job details from right-hand pane
+                title_loc = page.locator(
+                    "h1.t-24, .job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title"
+                ).first
+                job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
+
+                comp_loc = page.locator(
+                    ".job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name, a[href*='/company/']"
+                ).first
+                company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "LinkedIn Employer"
+
+                loc_loc = page.locator(
+                    ".job-details-jobs-unified-top-card__primary-description-container, .jobs-unified-top-card__bullet"
+                ).first
+                job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
+
+                current_job_url = clean_href or page.url
+
+                # Check if already applied
+                applied_badge = page.locator(
+                    "span:has-text('Applied'), div:has-text('Applied '), .jobs-s-apply__application-link"
+                ).first
+                if await applied_badge.count() > 0 and await applied_badge.is_visible():
+                    logger.info(f"[LinkedIn Auto-Pilot] Already applied to '{job_title}' at {company_name}. Skipping.")
+                    continue
+
+                # Look for Easy Apply button on details pane
+                easy_btn = page.locator(
+                    "button.jobs-apply-button:has-text('Easy Apply'), "
+                    "div.jobs-apply-button--top-card button:has-text('Easy Apply'), "
+                    "button:has-text('Easy Apply'), "
+                    "button[aria-label*='Easy Apply' i]"
+                ).first
+
+                if await easy_btn.count() == 0 or not await easy_btn.is_visible():
+                    logger.info(f"[LinkedIn Auto-Pilot] '{job_title}' does not have Easy Apply button (external apply). Skipping.")
+                    continue
+
+                # Cursor animation to Easy Apply button & click
+                btn_box = await easy_btn.bounding_box()
+                if btn_box:
+                    await page.mouse.move(btn_box["x"] + btn_box["width"] / 2, btn_box["y"] + btn_box["height"] / 2, steps=8)
+                    await page.wait_for_timeout(250)
+                await easy_btn.click()
+                await page.wait_for_timeout(2000)
+
+                # Execute multi-step Easy Apply modal workflow
+                apply_res = await workflow_linkedin_easy_apply(
+                    page=page,
+                    profile=profile,
+                    job=None,
+                    resume_path=resume_path,
+                    cover_letter=cover_letter,
+                    auto_submit=auto_submit,
+                )
+
+                shot = await browser_manager.capture_screenshot(page, f"linkedin_{len(applied_jobs) + 1}")
+                outcome = apply_res.get("outcome", "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED")
+
+                record = {
+                    "index": len(applied_jobs) + 1,
+                    "title": job_title,
+                    "company": company_name,
+                    "location": job_location,
+                    "url": current_job_url,
+                    "outcome": outcome,
+                    "steps_completed": apply_res.get("steps_completed", []),
+                    "screenshot": shot,
+                }
+                applied_jobs.append(record)
+                logger.info(f"[LinkedIn Auto-Pilot] Applied #{len(applied_jobs)}: {job_title} at {company_name} -> {outcome}")
+
+                # Persist application in SQLite DB
                 try:
-                    db_job = db.query(JobListing).filter(JobListing.original_url == current_job_url).first()
-                    if not db_job:
-                        db_job = JobListing(
-                            title=job_title,
-                            company=company_name,
-                            location=job_location,
-                            original_url=current_job_url,
-                            normalized_url=current_job_url,
-                            source_platform="linkedin_easy_apply",
-                            application_method="EASY_APPLY",
-                            status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
+                    db = SessionLocal()
+                    try:
+                        db_job = db.query(JobListing).filter(JobListing.original_url == current_job_url).first()
+                        if not db_job:
+                            db_job = JobListing(
+                                title=job_title,
+                                company=company_name,
+                                location=job_location,
+                                original_url=current_job_url,
+                                normalized_url=current_job_url,
+                                source_platform="linkedin_easy_apply",
+                                application_method="EASY_APPLY",
+                                status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
+                            )
+                            db.add(db_job)
+                            db.commit()
+                            db.refresh(db_job)
+
+                        db_app = JobApplication(
+                            job_id=db_job.id,
+                            status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
+                            last_action=f"LinkedIn Easy Apply: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
+                            screenshot_path=shot,
+                            applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
                         )
-                        db.add(db_job)
+                        db.add(db_app)
                         db.commit()
-                        db.refresh(db_job)
 
-                    db_app = JobApplication(
-                        job_id=db_job.id,
-                        status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
-                        last_action=f"LinkedIn Easy Apply: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
-                        screenshot_path=shot,
-                        applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
-                    )
-                    db.add(db_app)
-                    db.commit()
+                        log_activity(
+                            db,
+                            "SUCCESS" if outcome == "SUBMITTED" else "INFO",
+                            "LINKEDIN_EASY_APPLY",
+                            f"LinkedIn Auto-Pilot applied for '{job_title}' at {company_name}",
+                            job_id=db_job.id,
+                            application_id=db_app.id,
+                        )
+                    finally:
+                        db.close()
+                except Exception as dbe:
+                    logger.warning(f"Error persisting LinkedIn app to DB: {dbe}")
 
-                    log_activity(
-                        db,
-                        "SUCCESS" if outcome == "SUBMITTED" else "INFO",
-                        "LINKEDIN_EASY_APPLY",
-                        f"LinkedIn Auto-Pilot applied for '{job_title}' at {company_name}",
-                        job_id=db_job.id,
-                        application_id=db_app.id,
-                    )
-                finally:
-                    db.close()
-            except Exception as dbe:
-                logger.warning(f"Error persisting LinkedIn app to DB: {dbe}")
+                # Anti-ban natural delay with jitter and cooldown breathers every 5 jobs
+                if delay_seconds > 0:
+                    is_cooldown = (len(applied_jobs) % 5 == 0)
+                    await _human_delay(delay_seconds, cooldown=is_cooldown)
 
-            # User-configured delay between applications
-            if len(applied_jobs) < max_jobs and delay_seconds > 0:
-                logger.info(f"[LinkedIn Auto-Pilot] Waiting {delay_seconds}s human delay before next job...")
-                await asyncio.sleep(delay_seconds)
+            except Exception as loop_err:
+                logger.exception(f"Error handling job card #{card_idx}: {loop_err}")
+                try:
+                    for dismiss_sel in ["button[aria-label*='Dismiss' i]", "button:has-text('Discard')"]:
+                        d_btn = page.locator(dismiss_sel).first
+                        if await d_btn.count() > 0 and await d_btn.is_visible():
+                            await d_btn.click()
+                            await page.wait_for_timeout(600)
+                except Exception:
+                    pass
+                continue
 
-        except Exception as loop_err:
-            logger.exception(f"Error handling job card #{target_idx}: {loop_err}")
-            # Try to dismiss hanging modal
+        # Check if target reached
+        if len(applied_jobs) >= target_cap:
+            break
+
+        # Pagination: check next page or navigate using &start={offset}
+        next_page_num = current_page_num + 1
+        start_offset = (next_page_num - 1) * 25
+        next_url = f"https://www.linkedin.com/jobs/search/?keywords={enc_kw}&location={enc_loc}&f_AL=true&start={start_offset}"
+
+        next_btn = page.locator(
+            f"button[aria-label='View next page'], button[aria-label='Next'], button[aria-label*='Page {next_page_num}'], li[data-test-pagination-page-btn='{next_page_num}'] button"
+        ).first
+
+        has_next = False
+        if await next_btn.count() > 0 and await next_btn.is_visible():
+            logger.info(f"[LinkedIn Auto-Pilot] Clicking Next Page ({next_page_num})...")
+            await next_btn.scroll_into_view_if_needed()
+            await next_btn.click()
+            has_next = True
+        elif new_cards_processed_on_page > 0:
+            logger.info(f"[LinkedIn Auto-Pilot] Navigating to next page offset: {next_url}")
             try:
-                for dismiss_sel in ["button[aria-label*='Dismiss' i]", "button:has-text('Discard')"]:
-                    d_btn = page.locator(dismiss_sel).first
-                    if await d_btn.count() > 0 and await d_btn.is_visible():
-                        await d_btn.click()
-                        await page.wait_for_timeout(800)
+                await page.goto(next_url, wait_until="domcontentloaded", timeout=35000)
+                has_next = True
             except Exception:
-                pass
-            continue
+                has_next = False
+
+        if not has_next or new_cards_processed_on_page == 0:
+            logger.info(f"[LinkedIn Auto-Pilot] All matching Easy Apply jobs for '{keywords}' in '{location}' on LinkedIn have been exhausted.")
+            is_exhausted = True
+            break
+
+        current_page_num += 1
+        await page.wait_for_timeout(3000)
 
     summary_shot = await browser_manager.capture_screenshot(page, "linkedin_autopilot_summary")
     return {
-        "outcome": "COMPLETED",
+        "outcome": "JOBS_EXHAUSTED" if is_exhausted else "COMPLETED",
+        "message": (
+            f"Auto-Pilot applied to {len(applied_jobs)} jobs. All relevant Easy Apply listings for '{keywords}' in '{location}' on LinkedIn have run out."
+            if is_exhausted else
+            f"Auto-Pilot completed! Successfully applied to {len(applied_jobs)} LinkedIn Easy Apply jobs."
+        ),
         "keywords": keywords,
         "location": location,
         "platform": "linkedin",
@@ -1421,6 +1475,7 @@ async def execute_linkedin_auto_search_and_apply(
         "jobs_applied": len(applied_jobs),
         "delay_seconds": delay_seconds,
         "auto_submit": auto_submit,
+        "unlimited": unlimited,
         "applications": applied_jobs,
         "screenshot": summary_shot,
     }
@@ -1435,19 +1490,15 @@ async def execute_indeed_auto_search_and_apply(
     max_jobs: int = 5,
     delay_seconds: float = 4.0,
     auto_submit: bool = True,
+    unlimited: bool = False,
 ) -> Dict[str, Any]:
     """
     Automated Indeed 'Easily apply' search & apply robot.
-    1. Launches visible desktop Chromium Playwright session with saved cookies/profile.
-    2. Navigates to Indeed (or in.indeed.com for India) with 'Easily apply' filter enabled.
-    3. Iterates through search result job cards one by one:
-       - Moves cursor to job card and clicks.
-       - Clicks 'Apply now' button.
-       - Autofills all multi-step form questions (experience, CTC, notice period, work auth).
-       - Submits or stages for review, and captures screenshot.
-       - Observes anti-ban human jitter delay between applications.
+    Supports UNLIMITED mode: paginates through search pages non-stop until all relevant jobs run out.
+    Enforces anti-ban human delay and safety cooldowns to keep accounts completely safe.
     """
-    logger.info(f"Starting Indeed Auto-Pilot: keywords='{keywords}', location='{location}', max_jobs={max_jobs}, delay={delay_seconds}s")
+    target_limit_desc = "∞ UNLIMITED (Runs till relevant jobs run out)" if (unlimited or max_jobs <= 0) else f"Target {max_jobs} jobs"
+    logger.info(f"Starting Indeed Auto-Pilot: keywords='{keywords}', location='{location}', {target_limit_desc}, delay={delay_seconds}s")
 
     if profile is None:
         db = SessionLocal()
@@ -1475,12 +1526,11 @@ async def execute_indeed_auto_search_and_apply(
 
     enc_kw = urllib.parse.quote(keywords.strip())
     enc_loc = urllib.parse.quote(location.strip())
-    # sc=0kf%3Aattr%28DSQF7%29%3B is Indeed's official filter for "Easily apply"
-    search_url = f"{base_host}/jobs?q={enc_kw}&l={enc_loc}&sc=0kf%3Aattr%28DSQF7%29%3B"
+    base_search_url = f"{base_host}/jobs?q={enc_kw}&l={enc_loc}&sc=0kf%3Aattr%28DSQF7%29%3B"
 
-    logger.info(f"[Indeed Auto-Pilot] Navigating to: {search_url}")
+    logger.info(f"[Indeed Auto-Pilot] Navigating to: {base_search_url}")
     try:
-        await page.goto(search_url, wait_until="domcontentloaded", timeout=45000)
+        await page.goto(base_search_url, wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
         logger.warning(f"[Indeed Auto-Pilot] Navigation timed out or slow: {e}")
 
@@ -1500,152 +1550,218 @@ async def execute_indeed_auto_search_and_apply(
             "applications": [],
         }
 
-    # Discover and iterate over Indeed job cards
     applied_jobs = []
     processed_count = 0
-    max_loops = max_jobs * 3
+    seen_job_urls = set()
+    current_page_num = 1
+    max_pages = 50 if (unlimited or max_jobs <= 0) else max(2, (max_jobs // 10) + 2)
+    target_cap = 999999 if (unlimited or max_jobs <= 0) else max_jobs
+    is_exhausted = False
 
-    for loop_i in range(max_loops):
-        if len(applied_jobs) >= max_jobs:
+    while True:
+        if len(applied_jobs) >= target_cap:
+            logger.info(f"[Indeed Auto-Pilot] Reached target application count ({len(applied_jobs)}/{target_cap}).")
             break
+        if current_page_num > max_pages:
+            logger.info(f"[Indeed Auto-Pilot] Reached maximum page count ({max_pages}). Stopping.")
+            break
+
+        logger.info(f"[Indeed Auto-Pilot] Traversing Page {current_page_num}...")
+
+        # Scroll to ensure cards render
+        for _ in range(3):
+            await page.evaluate("window.scrollBy(0, 450)")
+            await page.wait_for_timeout(400)
 
         cards = page.locator("div.job_seen_beacon, div.cardOutline, div[data-testid='slider_item'], div.jobsearch-ResultsList > li")
         total_cards = await cards.count()
+
         if total_cards == 0:
-            logger.warning("[Indeed Auto-Pilot] No job cards found, scrolling...")
-            await page.evaluate("window.scrollBy(0, 350)")
-            await page.wait_for_timeout(2000)
-            cards = page.locator("div.job_seen_beacon, div.cardOutline, div[data-testid='slider_item'], div.jobsearch-ResultsList > li")
-            total_cards = await cards.count()
-            if total_cards == 0:
+            logger.warning(f"[Indeed Auto-Pilot] No job cards found on page {current_page_num}. Relevant jobs ran out.")
+            is_exhausted = True
+            break
+
+        new_cards_processed_on_page = 0
+
+        for card_idx in range(total_cards):
+            if len(applied_jobs) >= target_cap:
                 break
 
-        target_idx = loop_i % total_cards
-        card = cards.nth(target_idx)
+            card = cards.nth(card_idx)
 
-        try:
-            await card.scroll_into_view_if_needed()
-            await page.wait_for_timeout(400)
+            try:
+                await card.scroll_into_view_if_needed()
+                await page.wait_for_timeout(300)
 
-            # Move cursor to job card with human motion
-            box = await card.bounding_box()
-            if box:
-                await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=10)
-                await page.wait_for_timeout(200)
-                await card.click()
-            else:
-                await card.click()
+                # Find link for deduplication
+                link_el = card.locator("a.jcs-JobTitle, a[id*='job_'], a[data-jk]").first
+                job_key = (await link_el.get_attribute("data-jk")) if await link_el.count() > 0 else ""
+                href = (await link_el.get_attribute("href")) if await link_el.count() > 0 else ""
+                clean_href = f"{base_host}/viewjob?jk={job_key}" if job_key else (href.split("&")[0] if href else "")
 
-            await page.wait_for_timeout(2000)
-            processed_count += 1
+                if clean_href and clean_href in seen_job_urls:
+                    continue
+                if clean_href:
+                    seen_job_urls.add(clean_href)
 
-            # Extract job details
-            title_loc = page.locator("h2.jobsearch-JobInfoHeader-title, h1[data-testid='jobsearch-JobInfoHeader-title'], .jobsearch-JobInfoHeader-title").first
-            job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
+                new_cards_processed_on_page += 1
 
-            comp_loc = page.locator("div[data-testid='inlineHeader-companyName'], .jobsearch-InlineCompanyRating-companyHeader, a[data-company-name='true']").first
-            company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "Indeed Employer"
+                # Move cursor to job card with human motion
+                box = await card.bounding_box()
+                if box:
+                    await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+                    await page.wait_for_timeout(200)
+                    await card.click()
+                else:
+                    await card.click()
 
-            loc_loc = page.locator("div[data-testid='inlineHeader-companyLocation'], .jobsearch-JobInfoHeader-companyLocation").first
-            job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
+                await page.wait_for_timeout(2000)
+                processed_count += 1
 
-            current_job_url = page.url
+                # Extract job details
+                title_loc = page.locator("h2.jobsearch-JobInfoHeader-title, h1[data-testid='jobsearch-JobInfoHeader-title'], .jobsearch-JobInfoHeader-title").first
+                job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
 
-            # Check for Easily apply CTA button
-            apply_btn = page.locator("button#indeedApplyButton, button:has-text('Apply now'), a:has-text('Apply now')").first
-            if await apply_btn.count() == 0 or not await apply_btn.is_visible():
-                logger.info(f"[Indeed Auto-Pilot] '{job_title}' does not have 1-click Apply button. Skipping.")
+                comp_loc = page.locator("div[data-testid='inlineHeader-companyName'], .jobsearch-InlineCompanyRating-companyHeader, a[data-company-name='true']").first
+                company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "Indeed Employer"
+
+                loc_loc = page.locator("div[data-testid='inlineHeader-companyLocation'], .jobsearch-JobInfoHeader-companyLocation").first
+                job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
+
+                current_job_url = clean_href or page.url
+
+                # Check for Easily apply CTA button
+                apply_btn = page.locator("button#indeedApplyButton, button:has-text('Apply now'), a:has-text('Apply now')").first
+                if await apply_btn.count() == 0 or not await apply_btn.is_visible():
+                    logger.info(f"[Indeed Auto-Pilot] '{job_title}' does not have 1-click Apply button. Skipping.")
+                    continue
+
+                # Cursor move to Apply button
+                btn_box = await apply_btn.bounding_box()
+                if btn_box:
+                    await page.mouse.move(btn_box["x"] + btn_box["width"] / 2, btn_box["y"] + btn_box["height"] / 2, steps=8)
+                    await page.wait_for_timeout(250)
+                await apply_btn.click()
+                await page.wait_for_timeout(2000)
+
+                # Execute Indeed multi-step apply workflow
+                apply_res = await workflow_indeed_apply(
+                    page=page,
+                    profile=profile,
+                    job=None,
+                    resume_path=resume_path,
+                    cover_letter=cover_letter,
+                    auto_submit=auto_submit,
+                )
+
+                shot = await browser_manager.capture_screenshot(page, f"indeed_{len(applied_jobs) + 1}")
+                outcome = apply_res.get("outcome", "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED")
+
+                record = {
+                    "index": len(applied_jobs) + 1,
+                    "title": job_title,
+                    "company": company_name,
+                    "location": job_location,
+                    "url": current_job_url,
+                    "outcome": outcome,
+                    "steps_completed": apply_res.get("steps_completed", []),
+                    "screenshot": shot,
+                }
+                applied_jobs.append(record)
+                logger.info(f"[Indeed Auto-Pilot] Applied #{len(applied_jobs)}: {job_title} at {company_name} -> {outcome}")
+
+                # Persist application in SQLite DB
+                try:
+                    db = SessionLocal()
+                    try:
+                        db_job = db.query(JobListing).filter(JobListing.original_url == current_job_url).first()
+                        if not db_job:
+                            db_job = JobListing(
+                                title=job_title,
+                                company=company_name,
+                                location=job_location,
+                                original_url=current_job_url,
+                                normalized_url=current_job_url,
+                                source_platform="indeed_easily_apply",
+                                application_method="EASY_APPLY",
+                                status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
+                            )
+                            db.add(db_job)
+                            db.commit()
+                            db.refresh(db_job)
+
+                        db_app = JobApplication(
+                            job_id=db_job.id,
+                            status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
+                            last_action=f"Indeed Auto-Pilot: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
+                            screenshot_path=shot,
+                            applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
+                        )
+                        db.add(db_app)
+                        db.commit()
+
+                        log_activity(
+                            db,
+                            "SUCCESS" if outcome == "SUBMITTED" else "INFO",
+                            "INDEED_APPLY",
+                            f"Indeed Auto-Pilot applied for '{job_title}' at {company_name}",
+                            job_id=db_job.id,
+                            application_id=db_app.id,
+                        )
+                    finally:
+                        db.close()
+                except Exception as dbe:
+                    logger.warning(f"Error persisting Indeed app to DB: {dbe}")
+
+                # Anti-ban delay with natural jitter
+                if delay_seconds > 0:
+                    is_cooldown = (len(applied_jobs) % 5 == 0)
+                    await _human_delay(delay_seconds, cooldown=is_cooldown)
+
+            except Exception as loop_err:
+                logger.exception(f"Error handling Indeed card #{card_idx}: {loop_err}")
                 continue
 
-            # Cursor move to Apply button
-            btn_box = await apply_btn.bounding_box()
-            if btn_box:
-                await page.mouse.move(btn_box["x"] + btn_box["width"] / 2, btn_box["y"] + btn_box["height"] / 2, steps=8)
-                await page.wait_for_timeout(300)
-            await apply_btn.click()
-            await page.wait_for_timeout(2000)
+        # Check if target reached
+        if len(applied_jobs) >= target_cap:
+            break
 
-            # Execute Indeed multi-step apply workflow
-            apply_res = await workflow_indeed_apply(
-                page=page,
-                profile=profile,
-                job=None,
-                resume_path=resume_path,
-                cover_letter=cover_letter,
-                auto_submit=auto_submit,
-            )
+        # Pagination to next page
+        next_page_num = current_page_num + 1
+        start_offset = (next_page_num - 1) * 10
+        next_url = f"{base_search_url}&start={start_offset}"
 
-            shot = await browser_manager.capture_screenshot(page, f"indeed_{len(applied_jobs) + 1}")
-            outcome = apply_res.get("outcome", "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED")
-
-            record = {
-                "index": len(applied_jobs) + 1,
-                "title": job_title,
-                "company": company_name,
-                "location": job_location,
-                "url": current_job_url,
-                "outcome": outcome,
-                "steps_completed": apply_res.get("steps_completed", []),
-                "screenshot": shot,
-            }
-            applied_jobs.append(record)
-            logger.info(f"[Indeed Auto-Pilot] Completed {len(applied_jobs)}/{max_jobs}: {job_title} at {company_name} -> {outcome}")
-
-            # Persist application in SQLite DB
+        next_btn = page.locator("a[data-testid='pagination-page-next'], a[aria-label='Next Page'], a[aria-label='Next']").first
+        has_next = False
+        if await next_btn.count() > 0 and await next_btn.is_visible():
+            logger.info(f"[Indeed Auto-Pilot] Clicking Next Page ({next_page_num})...")
+            await next_btn.scroll_into_view_if_needed()
+            await next_btn.click()
+            has_next = True
+        elif new_cards_processed_on_page > 0:
+            logger.info(f"[Indeed Auto-Pilot] Navigating to next page offset: {next_url}")
             try:
-                db = SessionLocal()
-                try:
-                    db_job = db.query(JobListing).filter(JobListing.original_url == current_job_url).first()
-                    if not db_job:
-                        db_job = JobListing(
-                            title=job_title,
-                            company=company_name,
-                            location=job_location,
-                            original_url=current_job_url,
-                            normalized_url=current_job_url,
-                            source_platform="indeed_easily_apply",
-                            application_method="EASY_APPLY",
-                            status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
-                        )
-                        db.add(db_job)
-                        db.commit()
-                        db.refresh(db_job)
+                await page.goto(next_url, wait_until="domcontentloaded", timeout=35000)
+                has_next = True
+            except Exception:
+                has_next = False
 
-                    db_app = JobApplication(
-                        job_id=db_job.id,
-                        status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
-                        last_action=f"Indeed Auto-Pilot: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
-                        screenshot_path=shot,
-                        applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
-                    )
-                    db.add(db_app)
-                    db.commit()
+        if not has_next or new_cards_processed_on_page == 0:
+            logger.info(f"[Indeed Auto-Pilot] All matching Indeed jobs for '{keywords}' in '{location}' have been exhausted.")
+            is_exhausted = True
+            break
 
-                    log_activity(
-                        db,
-                        "SUCCESS" if outcome == "SUBMITTED" else "INFO",
-                        "INDEED_APPLY",
-                        f"Indeed Auto-Pilot applied for '{job_title}' at {company_name}",
-                        job_id=db_job.id,
-                        application_id=db_app.id,
-                    )
-                finally:
-                    db.close()
-            except Exception as dbe:
-                logger.warning(f"Error persisting Indeed app to DB: {dbe}")
-
-            # Anti-ban delay with natural jitter
-            if len(applied_jobs) < max_jobs and delay_seconds > 0:
-                is_cooldown = (len(applied_jobs) % 5 == 0)
-                await _human_delay(delay_seconds, cooldown=is_cooldown)
-
-        except Exception as loop_err:
-            logger.exception(f"Error handling Indeed card #{target_idx}: {loop_err}")
-            continue
+        current_page_num += 1
+        await page.wait_for_timeout(3000)
 
     summary_shot = await browser_manager.capture_screenshot(page, "indeed_autopilot_summary")
     return {
-        "outcome": "COMPLETED",
+        "outcome": "JOBS_EXHAUSTED" if is_exhausted else "COMPLETED",
+        "message": (
+            f"Auto-Pilot applied to {len(applied_jobs)} jobs. All relevant Indeed Easily Apply listings for '{keywords}' in '{location}' have run out."
+            if is_exhausted else
+            f"Auto-Pilot completed! Successfully applied to {len(applied_jobs)} Indeed jobs."
+        ),
         "keywords": keywords,
         "location": location,
         "platform": "indeed",
@@ -1653,6 +1769,7 @@ async def execute_indeed_auto_search_and_apply(
         "jobs_applied": len(applied_jobs),
         "delay_seconds": delay_seconds,
         "auto_submit": auto_submit,
+        "unlimited": unlimited,
         "applications": applied_jobs,
         "screenshot": summary_shot,
     }
@@ -1667,16 +1784,15 @@ async def execute_naukri_auto_search_and_apply(
     max_jobs: int = 5,
     delay_seconds: float = 4.0,
     auto_submit: bool = True,
+    unlimited: bool = False,
 ) -> Dict[str, Any]:
     """
     Automated Naukri.com (India #1 Portal) 1-Click Fast Apply robot.
-    1. Launches visible desktop Chromium with user's saved Naukri cookies/session.
-    2. Navigates to target search query for Indian tech roles.
-    3. Loops through job cards, clicks Apply / 1-Click Apply.
-    4. Handles notice period, CTC, and experience questionnaires.
-    5. Submits and records application with anti-ban human delay.
+    Supports UNLIMITED mode: paginates through search pages non-stop until all relevant jobs run out.
+    Enforces anti-ban human delay and safety cooldowns to keep accounts completely safe.
     """
-    logger.info(f"Starting Naukri India Auto-Pilot: keywords='{keywords}', location='{location}', max_jobs={max_jobs}")
+    target_limit_desc = "∞ UNLIMITED (Runs till relevant jobs run out)" if (unlimited or max_jobs <= 0) else f"Target {max_jobs} jobs"
+    logger.info(f"Starting Naukri India Auto-Pilot: keywords='{keywords}', location='{location}', {target_limit_desc}, delay={delay_seconds}s")
 
     if profile is None:
         db = SessionLocal()
@@ -1700,11 +1816,11 @@ async def execute_naukri_auto_search_and_apply(
 
     kw_clean = keywords.strip().replace(" ", "-").lower()
     loc_clean = location.strip().replace(" ", "-").lower()
-    search_url = f"https://www.naukri.com/{kw_clean}-jobs-in-{loc_clean}"
+    base_search_url = f"https://www.naukri.com/{kw_clean}-jobs-in-{loc_clean}"
 
-    logger.info(f"[Naukri Auto-Pilot] Navigating to: {search_url}")
+    logger.info(f"[Naukri Auto-Pilot] Navigating to: {base_search_url}")
     try:
-        await page.goto(search_url, wait_until="domcontentloaded", timeout=45000)
+        await page.goto(base_search_url, wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
         logger.warning(f"[Naukri Auto-Pilot] Navigation timed out or slow: {e}")
 
@@ -1725,133 +1841,194 @@ async def execute_naukri_auto_search_and_apply(
 
     applied_jobs = []
     processed_count = 0
-    max_loops = max_jobs * 3
+    seen_job_urls = set()
+    current_page_num = 1
+    max_pages = 50 if (unlimited or max_jobs <= 0) else max(2, (max_jobs // 10) + 2)
+    target_cap = 999999 if (unlimited or max_jobs <= 0) else max_jobs
+    is_exhausted = False
 
-    for loop_i in range(max_loops):
-        if len(applied_jobs) >= max_jobs:
+    while True:
+        if len(applied_jobs) >= target_cap:
+            logger.info(f"[Naukri Auto-Pilot] Reached target application count ({len(applied_jobs)}/{target_cap}).")
             break
+        if current_page_num > max_pages:
+            logger.info(f"[Naukri Auto-Pilot] Reached maximum page limit ({max_pages}). Stopping.")
+            break
+
+        logger.info(f"[Naukri Auto-Pilot] Traversing Page {current_page_num}...")
+
+        # Scroll to load job tuples
+        for _ in range(3):
+            await page.evaluate("window.scrollBy(0, 450)")
+            await page.wait_for_timeout(400)
 
         cards = page.locator("div.srp-jobtuple-wrapper, article.jobTuple, div.cust-job-tuple, div.tuple")
         total_cards = await cards.count()
+
         if total_cards == 0:
-            logger.warning("[Naukri Auto-Pilot] No job cards rendered yet, scrolling...")
-            await page.evaluate("window.scrollBy(0, 300)")
-            await page.wait_for_timeout(2000)
-            cards = page.locator("div.srp-jobtuple-wrapper, article.jobTuple, div.cust-job-tuple, div.tuple")
-            total_cards = await cards.count()
-            if total_cards == 0:
+            logger.warning(f"[Naukri Auto-Pilot] No job cards found on page {current_page_num}. Relevant jobs ran out.")
+            is_exhausted = True
+            break
+
+        new_cards_processed_on_page = 0
+
+        for card_idx in range(total_cards):
+            if len(applied_jobs) >= target_cap:
                 break
 
-        target_idx = loop_i % total_cards
-        card = cards.nth(target_idx)
+            card = cards.nth(card_idx)
 
-        try:
-            await card.scroll_into_view_if_needed()
-            await page.wait_for_timeout(400)
-
-            title_loc = card.locator("a.title, .job-title, a[class*='title']").first
-            job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
-
-            comp_loc = card.locator("a.comp-name, .company-name, a[class*='comp-name']").first
-            company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "Naukri Employer"
-
-            loc_loc = card.locator(".loc-wrap, .location, span[class*='loc']").first
-            job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
-
-            job_link = (await title_loc.get_attribute("href") or page.url) if await title_loc.count() > 0 else page.url
-
-            # Click card
-            box = await card.bounding_box()
-            if box:
-                await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
-                await card.click()
-            else:
-                await card.click()
-
-            await page.wait_for_timeout(2000)
-            processed_count += 1
-
-            # Run Naukri apply workflow
-            apply_res = await workflow_naukri_apply(
-                page=page,
-                profile=profile,
-                job=None,
-                resume_path=resume_path,
-                cover_letter=cover_letter,
-                auto_submit=auto_submit,
-            )
-
-            shot = await browser_manager.capture_screenshot(page, f"naukri_{len(applied_jobs) + 1}")
-            outcome = "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED"
-
-            record = {
-                "index": len(applied_jobs) + 1,
-                "title": job_title,
-                "company": company_name,
-                "location": job_location,
-                "url": job_link,
-                "outcome": outcome,
-                "steps_completed": apply_res.get("steps_completed", []),
-                "screenshot": shot,
-            }
-            applied_jobs.append(record)
-            logger.info(f"[Naukri Auto-Pilot] Completed {len(applied_jobs)}/{max_jobs}: {job_title} at {company_name} -> {outcome}")
-
-            # Persist in DB
             try:
-                db = SessionLocal()
+                await card.scroll_into_view_if_needed()
+                await page.wait_for_timeout(300)
+
+                title_loc = card.locator("a.title, .job-title, a[class*='title']").first
+                job_title = (await title_loc.inner_text()).strip() if await title_loc.count() > 0 else f"Job #{processed_count}"
+
+                comp_loc = card.locator("a.comp-name, .company-name, a[class*='comp-name']").first
+                company_name = (await comp_loc.inner_text()).strip() if await comp_loc.count() > 0 else "Naukri Employer"
+
+                loc_loc = card.locator(".loc-wrap, .location, span[class*='loc']").first
+                job_location = (await loc_loc.inner_text()).strip() if await loc_loc.count() > 0 else location
+
+                job_link = (await title_loc.get_attribute("href") or page.url) if await title_loc.count() > 0 else page.url
+                clean_link = job_link.split("?")[0] if job_link else ""
+
+                if clean_link and clean_link in seen_job_urls:
+                    continue
+                if clean_link:
+                    seen_job_urls.add(clean_link)
+
+                new_cards_processed_on_page += 1
+
+                # Click card with human cursor motion
+                box = await card.bounding_box()
+                if box:
+                    await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+                    await card.click()
+                else:
+                    await card.click()
+
+                await page.wait_for_timeout(2000)
+                processed_count += 1
+
+                # Run Naukri apply workflow
+                apply_res = await workflow_naukri_apply(
+                    page=page,
+                    profile=profile,
+                    job=None,
+                    resume_path=resume_path,
+                    cover_letter=cover_letter,
+                    auto_submit=auto_submit,
+                )
+
+                shot = await browser_manager.capture_screenshot(page, f"naukri_{len(applied_jobs) + 1}")
+                outcome = "SUBMITTED" if "submitted" in apply_res.get("steps_completed", []) else "PARTIAL_FILLED"
+
+                record = {
+                    "index": len(applied_jobs) + 1,
+                    "title": job_title,
+                    "company": company_name,
+                    "location": job_location,
+                    "url": clean_link or job_link,
+                    "outcome": outcome,
+                    "steps_completed": apply_res.get("steps_completed", []),
+                    "screenshot": shot,
+                }
+                applied_jobs.append(record)
+                logger.info(f"[Naukri Auto-Pilot] Applied #{len(applied_jobs)}: {job_title} at {company_name} -> {outcome}")
+
+                # Persist in DB
                 try:
-                    db_job = db.query(JobListing).filter(JobListing.original_url == job_link).first()
-                    if not db_job:
-                        db_job = JobListing(
-                            title=job_title,
-                            company=company_name,
-                            location=job_location,
-                            original_url=job_link,
-                            normalized_url=job_link,
-                            source_platform="naukri_india",
-                            application_method="ONE_CLICK",
-                            status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
+                    db = SessionLocal()
+                    try:
+                        db_job = db.query(JobListing).filter(JobListing.original_url == job_link).first()
+                        if not db_job:
+                            db_job = JobListing(
+                                title=job_title,
+                                company=company_name,
+                                location=job_location,
+                                original_url=job_link,
+                                normalized_url=job_link,
+                                source_platform="naukri_india",
+                                application_method="ONE_CLICK",
+                                status="APPLIED" if outcome == "SUBMITTED" else "QUEUED",
+                            )
+                            db.add(db_job)
+                            db.commit()
+                            db.refresh(db_job)
+
+                        db_app = JobApplication(
+                            job_id=db_job.id,
+                            status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
+                            last_action=f"Naukri Auto-Pilot: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
+                            screenshot_path=shot,
+                            applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
                         )
-                        db.add(db_job)
+                        db.add(db_app)
                         db.commit()
-                        db.refresh(db_job)
 
-                    db_app = JobApplication(
-                        job_id=db_job.id,
-                        status=ApplicationStatus.SUBMITTED.value if outcome == "SUBMITTED" else ApplicationStatus.AWAITING_REVIEW.value,
-                        last_action=f"Naukri Auto-Pilot: {outcome} ({len(apply_res.get('steps_completed', []))} steps)",
-                        screenshot_path=shot,
-                        applied_at=datetime.utcnow() if outcome == "SUBMITTED" else None,
-                    )
-                    db.add(db_app)
-                    db.commit()
+                        log_activity(
+                            db,
+                            "SUCCESS" if outcome == "SUBMITTED" else "INFO",
+                            "NAUKRI_APPLY",
+                            f"Naukri Auto-Pilot applied for '{job_title}' at {company_name}",
+                            job_id=db_job.id,
+                            application_id=db_app.id,
+                        )
+                    finally:
+                        db.close()
+                except Exception as dbe:
+                    logger.warning(f"Error persisting Naukri app to DB: {dbe}")
 
-                    log_activity(
-                        db,
-                        "SUCCESS" if outcome == "SUBMITTED" else "INFO",
-                        "NAUKRI_APPLY",
-                        f"Naukri Auto-Pilot applied for '{job_title}' at {company_name}",
-                        job_id=db_job.id,
-                        application_id=db_app.id,
-                    )
-                finally:
-                    db.close()
-            except Exception as dbe:
-                logger.warning(f"Error persisting Naukri app to DB: {dbe}")
+                # Anti-ban delay with natural jitter
+                if delay_seconds > 0:
+                    is_cooldown = (len(applied_jobs) % 5 == 0)
+                    await _human_delay(delay_seconds, cooldown=is_cooldown)
 
-            # Anti-ban delay
-            if len(applied_jobs) < max_jobs and delay_seconds > 0:
-                is_cooldown = (len(applied_jobs) % 5 == 0)
-                await _human_delay(delay_seconds, cooldown=is_cooldown)
+            except Exception as loop_err:
+                logger.exception(f"Error handling Naukri card #{card_idx}: {loop_err}")
+                continue
 
-        except Exception as loop_err:
-            logger.exception(f"Error handling Naukri card #{target_idx}: {loop_err}")
-            continue
+        # Check if target reached
+        if len(applied_jobs) >= target_cap:
+            break
+
+        # Pagination: next page in Naukri is typically URL suffix -2, -3 or next button
+        next_page_num = current_page_num + 1
+        next_url = f"https://www.naukri.com/{kw_clean}-jobs-in-{loc_clean}-{next_page_num}"
+
+        next_btn = page.locator("a.fright, a:has-text('Next'), div.pagination a:has-text('Next')").first
+        has_next = False
+        if await next_btn.count() > 0 and await next_btn.is_visible():
+            logger.info(f"[Naukri Auto-Pilot] Clicking Next Page ({next_page_num})...")
+            await next_btn.scroll_into_view_if_needed()
+            await next_btn.click()
+            has_next = True
+        elif new_cards_processed_on_page > 0:
+            logger.info(f"[Naukri Auto-Pilot] Navigating to next page URL: {next_url}")
+            try:
+                await page.goto(next_url, wait_until="domcontentloaded", timeout=35000)
+                has_next = True
+            except Exception:
+                has_next = False
+
+        if not has_next or new_cards_processed_on_page == 0:
+            logger.info(f"[Naukri Auto-Pilot] All matching Naukri India jobs for '{keywords}' in '{location}' have run out.")
+            is_exhausted = True
+            break
+
+        current_page_num += 1
+        await page.wait_for_timeout(3000)
 
     summary_shot = await browser_manager.capture_screenshot(page, "naukri_autopilot_summary")
     return {
-        "outcome": "COMPLETED",
+        "outcome": "JOBS_EXHAUSTED" if is_exhausted else "COMPLETED",
+        "message": (
+            f"Auto-Pilot applied to {len(applied_jobs)} jobs. All relevant Naukri India 1-Click Apply listings for '{keywords}' in '{location}' have run out."
+            if is_exhausted else
+            f"Auto-Pilot completed! Successfully applied to {len(applied_jobs)} Naukri India jobs."
+        ),
         "keywords": keywords,
         "location": location,
         "platform": "naukri",
@@ -1859,6 +2036,7 @@ async def execute_naukri_auto_search_and_apply(
         "jobs_applied": len(applied_jobs),
         "delay_seconds": delay_seconds,
         "auto_submit": auto_submit,
+        "unlimited": unlimited,
         "applications": applied_jobs,
         "screenshot": summary_shot,
     }
@@ -1875,14 +2053,16 @@ async def execute_universal_job_search_and_apply(
     delay_seconds: float = 4.0,
     auto_submit: bool = True,
     non_stop: bool = False,
+    unlimited: bool = False,
 ) -> Dict[str, Any]:
     """
     Universal multi-jobsite auto-pilot router.
-    Routes execution to LinkedIn, Indeed, Naukri, or cycles across all of them in continuous non-stop mode.
+    Routes execution to LinkedIn, Indeed, Naukri, or cycles across all of them in continuous non-stop or unlimited mode.
     Guarantees anti-ban human delay and safety cooldowns to keep accounts in good standing.
     """
     plat = platform.lower().strip()
-    logger.info(f"Universal Auto-Pilot: platform='{plat}', keywords='{keywords}', non_stop={non_stop}")
+    target_desc = "∞ UNLIMITED (till jobs run out)" if unlimited else f"{max_jobs} jobs"
+    logger.info(f"Universal Auto-Pilot: platform='{plat}', keywords='{keywords}', target={target_desc}, non_stop={non_stop}")
 
     if plat == "indeed":
         return await execute_indeed_auto_search_and_apply(
@@ -1894,6 +2074,7 @@ async def execute_universal_job_search_and_apply(
             max_jobs=max_jobs,
             delay_seconds=delay_seconds,
             auto_submit=auto_submit,
+            unlimited=unlimited,
         )
     elif plat == "naukri":
         return await execute_naukri_auto_search_and_apply(
@@ -1905,14 +2086,17 @@ async def execute_universal_job_search_and_apply(
             max_jobs=max_jobs,
             delay_seconds=delay_seconds,
             auto_submit=auto_submit,
+            unlimited=unlimited,
         )
     elif plat in ["all", "multi_portal"]:
-        # Split target jobs across platforms
-        each_target = max(1, max_jobs // 3)
+        # If unlimited, process each platform until jobs run out or large target reached
+        each_target = 999999 if unlimited else max(1, max_jobs // 3)
+
         res_li = await execute_linkedin_auto_search_and_apply(
             keywords=keywords, location=location, profile=profile,
             resume_path=resume_path, cover_letter=cover_letter,
             max_jobs=each_target, delay_seconds=delay_seconds, auto_submit=auto_submit,
+            unlimited=unlimited,
         )
         await _human_delay(delay_seconds, cooldown=True)
 
@@ -1920,6 +2104,7 @@ async def execute_universal_job_search_and_apply(
             keywords=keywords, location=location, profile=profile,
             resume_path=resume_path, cover_letter=cover_letter,
             max_jobs=each_target, delay_seconds=delay_seconds, auto_submit=auto_submit,
+            unlimited=unlimited,
         )
         await _human_delay(delay_seconds, cooldown=True)
 
@@ -1927,17 +2112,20 @@ async def execute_universal_job_search_and_apply(
             keywords=keywords, location=location, profile=profile,
             resume_path=resume_path, cover_letter=cover_letter,
             max_jobs=each_target, delay_seconds=delay_seconds, auto_submit=auto_submit,
+            unlimited=unlimited,
         )
 
         all_apps = res_li.get("applications", []) + res_ind.get("applications", []) + res_nk.get("applications", [])
         total_applied = len(all_apps)
         return {
-            "outcome": "COMPLETED",
+            "outcome": "JOBS_EXHAUSTED" if (res_li.get("outcome") == "JOBS_EXHAUSTED" and res_ind.get("outcome") == "JOBS_EXHAUSTED") else "COMPLETED",
+            "message": f"Multi-Portal Auto-Pilot applied to {total_applied} jobs across LinkedIn, Indeed, and Naukri India." + (" All relevant listings across portals have run out!" if unlimited else ""),
             "keywords": keywords,
             "location": location,
             "platform": "multi_portal",
             "jobs_applied": total_applied,
             "jobs_processed": res_li.get("jobs_processed", 0) + res_ind.get("jobs_processed", 0) + res_nk.get("jobs_processed", 0),
+            "unlimited": unlimited,
             "applications": all_apps,
             "screenshot": res_nk.get("screenshot") or res_li.get("screenshot"),
         }
@@ -1952,6 +2140,7 @@ async def execute_universal_job_search_and_apply(
             max_jobs=max_jobs,
             delay_seconds=delay_seconds,
             auto_submit=auto_submit,
+            unlimited=unlimited,
         )
 
 

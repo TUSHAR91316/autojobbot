@@ -108,3 +108,96 @@ I...'
 [2026-10-12 18:34:42,481] [INFO] [SESSION_START] Started automation session sess_20261012_130442 with target 15 applications, 2.0s delay (job_id=None, app_id=None)
 [2026-10-12 18:35:16,403] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_130442 (job_id=None, app_id=None)
 [2026-10-12 18:35:17,430] [INFO] [SESSION_STOP] Immediate stop requested for session sess_20261012_130442 (job_id=None, app_id=None)
+[2026-10-12 19:34:19,289] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 19:34:19,367] [WARNING] Failed to launch with persistent profile (BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝), using session fallback: BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+[2026-10-12 19:34:25,700] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 19:34:25,708] [WARNING] Failed to launch with persistent profile (BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝), using session fallback: BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+[2026-10-12 19:34:26,781] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 19:34:26,789] [WARNING] Failed to launch with persistent profile (BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝), using session fallback: BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+[2026-10-12 19:34:27,819] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 19:34:27,831] [WARNING] Failed to launch with persistent profile (BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝), using session fallback: BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+[2026-10-12 19:34:38,308] [INFO] [UNIVERSAL_AUTOPILOT_START] Launching Universal Auto-Pilot on 'INDEED': 'Python Developer' in 'Bengaluru, Karnataka, India' (Max 25 jobs, 6.0s delay, Non-Stop=True) (job_id=None, app_id=None)
+[2026-10-12 19:34:38,316] [INFO] Universal Auto-Pilot: platform='indeed', keywords='Python Developer', non_stop=True
+[2026-10-12 19:34:38,316] [INFO] Starting Indeed Auto-Pilot: keywords='Python Developer', location='Bengaluru, Karnataka, India', max_jobs=25, delay=6.0s
+[2026-10-12 19:34:38,864] [INFO] Launching visible browser (headless=False) with persistent profile at F:\Project\autojobbot\data\browser_profile
+[2026-10-12 19:34:38,873] [WARNING] Failed to launch with persistent profile (BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝), using session fallback: BrowserType.launch_persistent_context: Executable doesn't exist at C:\Users\tusha\AppData\Local\ms-playwright\chromium-1208\chrome-win64\chrome.exe
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝

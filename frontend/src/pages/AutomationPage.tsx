@@ -78,6 +78,7 @@ export const AutomationPage: React.FC = () => {
   // Universal Multi-Jobsite Auto-Pilot state
   const [selectedPlatform, setSelectedPlatform] = useState<"linkedin" | "indeed" | "naukri" | "multi_portal">("linkedin");
   const [isNonStop, setIsNonStop] = useState(false);
+  const [isUnlimited, setIsUnlimited] = useState(false);
   const [liKeywords, setLiKeywords] = useState("Python Developer");
   const [liLocation, setLiLocation] = useState("Bengaluru, Karnataka, India");
   const [liMaxJobs, setLiMaxJobs] = useState(5);
@@ -235,23 +236,29 @@ export const AutomationPage: React.FC = () => {
     try {
       setLiRunning(true);
       const platLabel = selectedPlatform === "multi_portal" ? "ALL JOBSITES" : selectedPlatform.toUpperCase();
-      setLiProgress(`Opening visible browser, navigating to ${platLabel} for '${liKeywords}' in '${liLocation}' with anti-ban delay...`);
+      const modeDesc = isUnlimited ? "UNLIMITED MODE (runs till relevant jobs run out)" : `${isNonStop ? "Non-Stop" : `${liMaxJobs} jobs`}`;
+      setLiProgress(`Opening visible browser, navigating to ${platLabel} for '${liKeywords}' in '${liLocation}' with ${modeDesc} and anti-ban delay...`);
       setLiResults(null);
+
+      const targetCount = isUnlimited ? 999999 : (isNonStop ? Math.max(liMaxJobs, 25) : liMaxJobs);
 
       const res = await applyUniversalAutoPilot.mutateAsync({
         platform: selectedPlatform,
         keywords: liKeywords.trim(),
         location: liLocation.trim(),
-        maxJobs: isNonStop ? Math.max(liMaxJobs, 25) : liMaxJobs,
+        maxJobs: targetCount,
         delaySeconds: liDelay,
         autoSubmit: liAutoSubmit,
         nonStop: isNonStop,
+        unlimited: isUnlimited,
       });
 
       if (res.result) {
         setLiResults(res.result);
         if (res.result.outcome === "AUTH_REQUIRED") {
           setLiProgress(`⚠️ ${platLabel} login required: desktop browser opened! Please log in to your account, then click Launch again.`);
+        } else if (res.result.outcome === "JOBS_EXHAUSTED") {
+          setLiProgress(`🏁 All relevant jobs run out on ${platLabel}! Successfully applied to ${res.result.jobs_applied} matching jobs.`);
         } else {
           setLiProgress(`🎉 Auto-Pilot finished! Successfully applied to ${res.result.jobs_applied} jobs across ${platLabel} with safe anti-ban delays.`);
         }
@@ -991,29 +998,41 @@ export const AutomationPage: React.FC = () => {
               <p className="text-[10px] text-text-muted">City / Region location filter.</p>
             </div>
 
-            {/* Max Jobs */}
+            {/* Max Jobs & Unlimited Option */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
                   <Bot className="w-3.5 h-3.5 text-primary" />
                   <span>Target Jobs Count:</span>
                 </label>
-                <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20 font-mono">
-                  {isNonStop ? "Non-Stop (25+)" : `${liMaxJobs} Jobs`}
+                <span className={`text-xs font-extrabold px-2 py-0.5 rounded font-mono ${
+                  isUnlimited
+                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                    : "text-primary bg-primary/10 border border-primary/20"
+                }`}>
+                  {isUnlimited ? "∞ Unlimited (Till Jobs Run Out)" : isNonStop ? "Non-Stop Apply" : `${liMaxJobs} Jobs`}
                 </span>
               </div>
               <input
                 type="range"
                 min="1"
-                max="25"
+                max="50"
                 step="1"
-                disabled={isNonStop}
+                disabled={isUnlimited}
                 value={liMaxJobs}
                 onChange={(e) => setLiMaxJobs(parseInt(e.target.value))}
                 className="w-full accent-primary h-1.5 bg-border rounded-lg cursor-pointer disabled:opacity-40"
               />
-              <div className="flex items-center justify-between text-[10px] text-text-muted">
-                <span>Batch target count</span>
+              <div className="flex items-center justify-between text-[10px] text-text-muted flex-wrap gap-2 pt-0.5">
+                <label className="flex items-center gap-1 cursor-pointer font-bold text-emerald-400 hover:text-emerald-300">
+                  <input
+                    type="checkbox"
+                    checked={isUnlimited}
+                    onChange={(e) => setIsUnlimited(e.target.checked)}
+                    className="rounded text-emerald-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                  />
+                  <span>∞ Unlimited (Till Jobs Run Out)</span>
+                </label>
                 <label className="flex items-center gap-1 cursor-pointer font-semibold text-primary">
                   <input
                     type="checkbox"
@@ -1118,7 +1137,7 @@ export const AutomationPage: React.FC = () => {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-text-primary">{liProgress}</p>
               <p className="text-[10px] text-text-muted mt-0.5">
-                CLI Command equivalent: <code className="font-mono bg-surface px-1 py-0.5 rounded text-[10px]">python run_jobbot.py --platform {selectedPlatform} --keywords "{liKeywords}" --location "{liLocation}" --max-jobs {liMaxJobs} --delay {liDelay}</code>
+                CLI Command equivalent: <code className="font-mono bg-surface px-1 py-0.5 rounded text-[10px]">python run_jobbot.py --platform {selectedPlatform} --keywords "{liKeywords}" --location "{liLocation}" {isUnlimited ? "--unlimited" : `--max-jobs ${liMaxJobs}`} --delay {liDelay}</code>
               </p>
             </div>
           </div>
@@ -1340,28 +1359,37 @@ export const AutomationPage: React.FC = () => {
             Session Targets & Rate Limits
           </h3>
 
-          {/* Target applications (1-15) */}
+          {/* Target applications (1-100 or Unlimited) */}
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
               <span className="font-medium text-text-secondary">Target Applications per Session</span>
-              <span className="font-bold text-primary">
-                {formData.target_applications_per_session || 15} / 15 max
+              <span className="font-bold text-primary font-mono">
+                {(formData.target_applications_per_session || 15) >= 100
+                  ? "∞ Unlimited (Run till queue empty)"
+                  : `${formData.target_applications_per_session || 15} apps`}
               </span>
             </div>
             <input
               type="range"
               min="1"
-              max="15"
+              max="100"
               step="1"
               value={formData.target_applications_per_session || 15}
               onChange={(e) =>
                 setFormData({ ...formData, target_applications_per_session: Number(e.target.value) })
               }
-              className="w-full accent-primary"
+              className="w-full accent-primary cursor-pointer"
             />
-            <p className="text-[11px] text-text-muted">
-              Safety limit: Maximum 15 applications per session to avoid spamming or account flagging.
-            </p>
+            <div className="flex items-center justify-between text-[11px] text-text-muted">
+              <span>Configurable limit with anti-ban pacing</span>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, target_applications_per_session: 100 })}
+                className="text-emerald-400 font-bold hover:underline cursor-pointer"
+              >
+                Set ∞ Unlimited
+              </button>
+            </div>
           </div>
 
           {/* Delay between attempts (1-5 seconds) */}

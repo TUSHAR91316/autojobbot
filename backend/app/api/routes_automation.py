@@ -55,6 +55,7 @@ class UniversalAutoApplyRequest(BaseModel):
     delay_seconds: float = 4.0
     auto_submit: bool = True
     non_stop: bool = False
+    unlimited: bool = False
 
 
 @router.get("/status")
@@ -545,9 +546,10 @@ async def start_universal_auto_apply(
 
     resume_path = primary_resume.file_path if primary_resume else None
 
+    target_limit_desc = "∞ Unlimited (Till Relevant Jobs Run Out)" if (data.unlimited or data.max_jobs <= 0) else f"Max {data.max_jobs} jobs"
     log_activity(
         db, "ACTION", "UNIVERSAL_AUTOPILOT_START",
-        f"Launching Universal Auto-Pilot on '{data.platform.upper()}': '{data.keywords}' in '{data.location}' (Max {data.max_jobs} jobs, {data.delay_seconds}s delay, Non-Stop={data.non_stop})"
+        f"Launching Universal Auto-Pilot on '{data.platform.upper()}': '{data.keywords}' in '{data.location}' ({target_limit_desc}, {data.delay_seconds}s delay, Non-Stop={data.non_stop}, Unlimited={data.unlimited})"
     )
 
     cover_letter = (
@@ -557,6 +559,9 @@ async def start_universal_auto_apply(
         f"Sincerely,\n{profile.full_name}"
     )
 
+    is_unlimited = data.unlimited or data.max_jobs <= 0 or data.max_jobs >= 9999
+    computed_max_jobs = 999999 if is_unlimited else max(1, min(data.max_jobs, 100 if data.non_stop else 50))
+
     result = await execute_universal_job_search_and_apply(
         platform=data.platform,
         keywords=data.keywords,
@@ -564,10 +569,11 @@ async def start_universal_auto_apply(
         profile=profile,
         resume_path=resume_path,
         cover_letter=cover_letter,
-        max_jobs=max(1, min(data.max_jobs, 50 if data.non_stop else 25)),
+        max_jobs=computed_max_jobs,
         delay_seconds=max(1.0, min(data.delay_seconds, 30.0)),
         auto_submit=data.auto_submit,
         non_stop=data.non_stop,
+        unlimited=is_unlimited,
     )
 
     return {
