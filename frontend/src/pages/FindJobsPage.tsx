@@ -21,7 +21,9 @@ import {
   Loader2,
   Layers,
   Clock,
+  Bot,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useJobs, useAppMutations, useProfile } from "../api/hooks";
 import { JobListing } from "../types";
 import { ScoreBreakdownModal } from "../components/jobs/ScoreBreakdownModal";
@@ -227,6 +229,15 @@ export const FindJobsPage: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5" />
             <span>{curateJobs.isPending ? "Curating Tech Jobs..." : "Curate by Resume"}</span>
           </button>
+
+          <Link
+            to="/automation"
+            className="fluent-button text-xs bg-[#0a66c2]/10 hover:bg-[#0a66c2]/20 text-[#0a66c2] border border-[#0a66c2]/30 font-semibold flex items-center gap-1.5"
+            title="Launch autonomous LinkedIn Easy Apply robot with cursor automation and Easy Apply filter"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>LinkedIn Easy Apply Bot 🚀</span>
+          </Link>
 
           <button
             onClick={() => discoverJobs.mutate("all")}

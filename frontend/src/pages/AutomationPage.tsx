@@ -28,6 +28,8 @@ import {
   Eye,
   RefreshCw,
   Image as ImageIcon,
+  Bot,
+  Search,
 } from "lucide-react";
 import {
   useAutomationSettings,
@@ -62,6 +64,8 @@ export const AutomationPage: React.FC = () => {
     openPortalLogin,
     connectChromeCdp,
     applyMultiTabInBrowser,
+    applyLinkedInAutoSearch,
+    applyUniversalAutoPilot,
   } = useAppMutations();
 
   const [formData, setFormData] = useState<Partial<AutomationSettings>>({});
@@ -70,6 +74,38 @@ export const AutomationPage: React.FC = () => {
   const [quickApplyMsg, setQuickApplyMsg] = useState("");
   const [cdpPortInput, setCdpPortInput] = useState("http://127.0.0.1:9222");
   const [cdpMsg, setCdpMsg] = useState("");
+
+  // Universal Multi-Jobsite Auto-Pilot state
+  const [selectedPlatform, setSelectedPlatform] = useState<"linkedin" | "indeed" | "naukri" | "multi_portal">("linkedin");
+  const [isNonStop, setIsNonStop] = useState(false);
+  const [liKeywords, setLiKeywords] = useState("Python Developer");
+  const [liLocation, setLiLocation] = useState("Bengaluru, Karnataka, India");
+  const [liMaxJobs, setLiMaxJobs] = useState(5);
+  const [liDelay, setLiDelay] = useState(4.0);
+  const [liAutoSubmit, setLiAutoSubmit] = useState(true);
+  const [liRunning, setLiRunning] = useState(false);
+  const [liProgress, setLiProgress] = useState("");
+  const [liResults, setLiResults] = useState<{
+    outcome: string;
+    message?: string;
+    keywords: string;
+    location: string;
+    jobs_processed: number;
+    jobs_applied: number;
+    delay_seconds: number;
+    auto_submit: boolean;
+    screenshot?: string;
+    applications: Array<{
+      index: number;
+      title: string;
+      company: string;
+      location: string;
+      url: string;
+      outcome: string;
+      steps_completed: string[];
+      screenshot?: string;
+    }>;
+  } | null>(null);
 
   // Multi-tab career portal auto-apply state
   const [multiUrlsText, setMultiUrlsText] = useState(
@@ -188,6 +224,43 @@ export const AutomationPage: React.FC = () => {
       "https://www.naukri.com/job-listings-fullstack-dev-bangalore-12345",
     ];
     setMultiUrlsText(samples.join("\n"));
+  };
+
+  const handleLaunchAutoPilot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!liKeywords.trim()) {
+      alert("Please enter a job search keyword or title.");
+      return;
+    }
+    try {
+      setLiRunning(true);
+      const platLabel = selectedPlatform === "multi_portal" ? "ALL JOBSITES" : selectedPlatform.toUpperCase();
+      setLiProgress(`Opening visible browser, navigating to ${platLabel} for '${liKeywords}' in '${liLocation}' with anti-ban delay...`);
+      setLiResults(null);
+
+      const res = await applyUniversalAutoPilot.mutateAsync({
+        platform: selectedPlatform,
+        keywords: liKeywords.trim(),
+        location: liLocation.trim(),
+        maxJobs: isNonStop ? Math.max(liMaxJobs, 25) : liMaxJobs,
+        delaySeconds: liDelay,
+        autoSubmit: liAutoSubmit,
+        nonStop: isNonStop,
+      });
+
+      if (res.result) {
+        setLiResults(res.result);
+        if (res.result.outcome === "AUTH_REQUIRED") {
+          setLiProgress(`⚠️ ${platLabel} login required: desktop browser opened! Please log in to your account, then click Launch again.`);
+        } else {
+          setLiProgress(`🎉 Auto-Pilot finished! Successfully applied to ${res.result.jobs_applied} jobs across ${platLabel} with safe anti-ban delays.`);
+        }
+      }
+    } catch (err: any) {
+      setLiProgress(err.response?.data?.detail || err.message || "Failed to execute auto-apply");
+    } finally {
+      setLiRunning(false);
+    }
   };
 
   const isRunning = status?.is_active && !status?.is_paused;
@@ -761,6 +834,378 @@ export const AutomationPage: React.FC = () => {
                       </button>
                       <span className="text-[10px] text-text-muted font-mono truncate max-w-[150px]">
                         {tab.screenshot.split("/").pop()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* UNIVERSAL MULTI-JOBSITE AUTONOMOUS PLAYWRIGHT ROBOT CONSOLE */}
+      <div className="fluent-card p-5 border-primary/40 bg-gradient-to-b from-surface via-surface to-primary/5 space-y-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-accent text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-lg">
+              <Bot className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-text-primary">
+                  Universal Multi-Jobsite Autonomous Auto-Pilot
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
+                  LinkedIn • Indeed • Naukri 🇮🇳
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-success/20 text-success border border-success/30">
+                  Anti-Ban Jitter & Cooldown Active
+                </span>
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                Automatically opens your desktop browser (already logged in with your cookies), searches jobs, clicks <strong>Easy Apply / 1-Click Apply</strong> filters, loops through job cards non-stop, fills forms with your resume, and applies with safe anti-ban delay.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Login Helpers for all job portals */}
+          <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+            <span className="text-[11px] text-text-muted font-medium">Verify Logins:</span>
+            <button
+              type="button"
+              onClick={() => openPortalLogin.mutate("linkedin")}
+              disabled={openPortalLogin.isPending}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#0a66c2]/10 hover:bg-[#0a66c2]/20 text-[#0a66c2] border border-[#0a66c2]/30 transition-all flex items-center gap-1"
+              title="Verify LinkedIn login session"
+            >
+              <KeyRound className="w-3 h-3" />
+              <span>LinkedIn</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openPortalLogin.mutate("indeed")}
+              disabled={openPortalLogin.isPending}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all flex items-center gap-1"
+              title="Verify Indeed login session"
+            >
+              <KeyRound className="w-3 h-3" />
+              <span>Indeed</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openPortalLogin.mutate("naukri")}
+              disabled={openPortalLogin.isPending}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all flex items-center gap-1"
+              title="Verify Naukri India login session"
+            >
+              <KeyRound className="w-3 h-3" />
+              <span>Naukri 🇮🇳</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Platform Selection Tabs */}
+        <div className="flex items-center gap-2 p-1.5 bg-surfaceHover/60 rounded-xl border border-border overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setSelectedPlatform("linkedin")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              selectedPlatform === "linkedin"
+                ? "bg-[#0a66c2] text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <span>LinkedIn Easy Apply</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedPlatform("indeed")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              selectedPlatform === "indeed"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <span>Indeed Easily Apply</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedPlatform("naukri")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              selectedPlatform === "naukri"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <span>Naukri.com India 🇮🇳</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedPlatform("multi_portal")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              selectedPlatform === "multi_portal"
+                ? "bg-primary text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>All Sites (Multi-Portal Rotation)</span>
+          </button>
+        </div>
+
+        {/* Inputs & Settings Bar */}
+        <form onSubmit={handleLaunchAutoPilot} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Search Keywords */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-primary" />
+                <span>Job Keywords / Role</span>
+              </label>
+              <input
+                type="text"
+                value={liKeywords}
+                onChange={(e) => setLiKeywords(e.target.value)}
+                placeholder="e.g. Python Developer, Full Stack Engineer"
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-xs text-text-primary focus:outline-none focus:border-primary"
+                required
+              />
+              <p className="text-[10px] text-text-muted">Target role keywords for automated job search.</p>
+            </div>
+
+            {/* Target Location */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-primary" />
+                <span>Location (India Preferred 🇮🇳)</span>
+              </label>
+              <input
+                type="text"
+                value={liLocation}
+                onChange={(e) => setLiLocation(e.target.value)}
+                placeholder="e.g. Bengaluru, Karnataka, India"
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-xs text-text-primary focus:outline-none focus:border-primary"
+                required
+              />
+              <p className="text-[10px] text-text-muted">City / Region location filter.</p>
+            </div>
+
+            {/* Max Jobs */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                  <Bot className="w-3.5 h-3.5 text-primary" />
+                  <span>Target Jobs Count:</span>
+                </label>
+                <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20 font-mono">
+                  {isNonStop ? "Non-Stop (25+)" : `${liMaxJobs} Jobs`}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="25"
+                step="1"
+                disabled={isNonStop}
+                value={liMaxJobs}
+                onChange={(e) => setLiMaxJobs(parseInt(e.target.value))}
+                className="w-full accent-primary h-1.5 bg-border rounded-lg cursor-pointer disabled:opacity-40"
+              />
+              <div className="flex items-center justify-between text-[10px] text-text-muted">
+                <span>Batch target count</span>
+                <label className="flex items-center gap-1 cursor-pointer font-semibold text-primary">
+                  <input
+                    type="checkbox"
+                    checked={isNonStop}
+                    onChange={(e) => setIsNonStop(e.target.checked)}
+                    className="rounded text-primary focus:ring-0 w-3 h-3 cursor-pointer"
+                  />
+                  <span>Non-Stop Apply</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Anti-Ban Delay Slider */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-primary" />
+                  <span>Anti-Ban Human Delay:</span>
+                </label>
+                <span className="text-xs font-extrabold text-success px-2 py-0.5 rounded bg-success/10 border border-success/20 font-mono">
+                  {liDelay.toFixed(1)}s (±1.5s jitter)
+                </span>
+              </div>
+              <input
+                type="range"
+                min="2.0"
+                max="15.0"
+                step="0.5"
+                value={liDelay}
+                onChange={(e) => setLiDelay(parseFloat(e.target.value))}
+                className="w-full accent-primary h-1.5 bg-border rounded-lg cursor-pointer"
+              />
+              <p className="text-[10px] text-success font-medium">
+                🛡️ Human jitter + 15s cooldown every 5 applications prevents account ban.
+              </p>
+            </div>
+          </div>
+
+          {/* Mode Selector and Launch Button Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-border/60">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-muted font-medium">Mode:</span>
+              <div className="flex items-center gap-1 bg-surface p-1 rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setLiAutoSubmit(true)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                    liAutoSubmit
+                      ? "bg-primary text-white shadow-xs"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  Auto-Submit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLiAutoSubmit(false)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                    !liAutoSubmit
+                      ? "bg-primary text-white shadow-xs"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  Stage for Review
+                </button>
+              </div>
+              <span className="text-[11px] text-text-muted ml-1">
+                {liAutoSubmit ? "Submits automatically with anti-ban delay" : "Fills all questions, leaves tab open for review"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={liRunning}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-primary to-accent hover:brightness-110 shadow-md transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                {liRunning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Robot Running on Desktop...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Launch {selectedPlatform === "multi_portal" ? "Multi-Jobsite" : selectedPlatform.toUpperCase()} Auto-Pilot 🚀</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* Live Progress Feedback Bar */}
+        {liProgress && (
+          <div className="p-3 rounded-xl bg-primary/10 border border-primary/30 flex items-start gap-2.5">
+            {liRunning ? (
+              <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-text-primary">{liProgress}</p>
+              <p className="text-[10px] text-text-muted mt-0.5">
+                CLI Command equivalent: <code className="font-mono bg-surface px-1 py-0.5 rounded text-[10px]">python run_jobbot.py --platform {selectedPlatform} --keywords "{liKeywords}" --location "{liLocation}" --max-jobs {liMaxJobs} --delay {liDelay}</code>
+              </p>
+            </div>
+          </div>
+        )}
+        {/* Application Results Telemetry */}
+        {liResults && (
+          <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                  <span>🚀 Auto-Pilot Applications Completed:</span>
+                  <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    {liResults.jobs_applied} Submitted
+                  </span>
+                </h4>
+                <p className="text-xs text-text-muted">
+                  {liResults.message}
+                </p>
+              </div>
+
+              {liResults.screenshot && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewScreenshot(`http://127.0.0.1:8000${liResults.screenshot}`)}
+                  className="text-xs text-[#0a66c2] hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>View Run Summary Screenshot</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {liResults.applications.map((app) => (
+                <div
+                  key={app.index}
+                  className="p-3.5 rounded-xl bg-surfaceHover/50 border border-border flex flex-col justify-between space-y-2.5 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 rounded-full bg-[#0a66c2]/20 text-[#0a66c2] font-bold text-xs flex items-center justify-center shrink-0">
+                        {app.index}
+                      </span>
+                      <div className="min-w-0">
+                        <h5 className="text-xs font-bold text-text-primary truncate">{app.title}</h5>
+                        <p className="text-[11px] text-text-muted truncate">{app.company} • {app.location}</p>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase shrink-0 ${
+                        app.outcome === "SUBMITTED"
+                          ? "bg-success/20 text-success border border-success/30"
+                          : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                      }`}
+                    >
+                      {app.outcome}
+                    </span>
+                  </div>
+
+                  {/* Steps badges */}
+                  {app.steps_completed && app.steps_completed.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {app.steps_completed.map((st, i) => (
+                        <span
+                          key={i}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-surface text-text-secondary border border-border/80 font-mono"
+                        >
+                          {st}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Screenshot Thumbnail */}
+                  {app.screenshot && (
+                    <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewScreenshot(`http://127.0.0.1:8000${app.screenshot}`)}
+                        className="text-[11px] font-semibold text-[#0a66c2] hover:underline flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Easy Apply Screenshot</span>
+                      </button>
+                      <span className="text-[10px] text-text-muted font-mono truncate max-w-[150px]">
+                        {app.screenshot.split("/").pop()}
                       </span>
                     </div>
                   )}

@@ -15,7 +15,14 @@ from backend.app.services.task_manager import task_manager
 from backend.app.services.cover_letter import generate_truthful_cover_letter
 from backend.app.core.logging import log_activity
 from backend.app.automation.browser import browser_manager
-from backend.app.automation.simulator import execute_live_browser_apply, execute_multi_tab_career_apply
+from backend.app.automation.simulator import (
+    execute_live_browser_apply,
+    execute_multi_tab_career_apply,
+    execute_linkedin_auto_search_and_apply,
+    execute_indeed_auto_search_and_apply,
+    execute_naukri_auto_search_and_apply,
+    execute_universal_job_search_and_apply,
+)
 
 router = APIRouter(prefix="/automation", tags=["Automation Controls"])
 
@@ -32,6 +39,24 @@ class MultiTabApplyRequest(BaseModel):
     auto_submit: bool = True
 
 
+class LinkedInAutoApplyRequest(BaseModel):
+    keywords: str = "Python Developer"
+    location: str = "Bengaluru, Karnataka, India"
+    max_jobs: int = 5
+    delay_seconds: float = 4.0
+    auto_submit: bool = True
+
+
+class UniversalAutoApplyRequest(BaseModel):
+    platform: str = "linkedin"  # linkedin, indeed, naukri, multi_portal
+    keywords: str = "Python Developer"
+    location: str = "Bengaluru, Karnataka, India"
+    max_jobs: int = 5
+    delay_seconds: float = 4.0
+    auto_submit: bool = True
+    non_stop: bool = False
+
+
 @router.get("/status")
 def get_automation_status(db: Session = Depends(get_db)):
     base_status = task_manager.get_status()
@@ -43,7 +68,7 @@ def get_automation_status(db: Session = Depends(get_db)):
 
 
 @router.post("/start")
-def start_automation(
+async def start_automation(
     target: Optional[int] = Body(None, embed=True),
     delay: Optional[float] = Body(None, embed=True)
 ):
@@ -446,6 +471,109 @@ async def apply_multi_tab_career_portals(
         "delay_seconds": delay,
         "auto_submit": data.auto_submit,
         "tab_results": result.get("tab_results", []),
+    }
+
+
+@router.post("/linkedin/auto-apply")
+async def start_linkedin_auto_apply(
+    data: LinkedInAutoApplyRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Launch visible desktop Playwright browser session, navigate to LinkedIn Jobs search,
+    automatically move cursor to the 'Easy Apply' filter and click it,
+    then automatically iterate through matching job cards, clicking Easy Apply,
+    autofilling all questions (phone, resume, notice period, CTC, work authorization),
+    and applying with user-specified delay.
+    """
+    profile = db.query(CandidateProfile).first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile is missing. Please save candidate profile first.")
+
+    primary_resume = db.query(ResumeVersion).filter(ResumeVersion.is_primary == True).first()
+    if not primary_resume:
+        primary_resume = db.query(ResumeVersion).first()
+
+    resume_path = primary_resume.file_path if primary_resume else None
+
+    log_activity(
+        db, "ACTION", "LINKEDIN_AUTOPILOT_START",
+        f"Launching LinkedIn Easy Apply Auto-Pilot: '{data.keywords}' in '{data.location}' (Max {data.max_jobs} jobs, {data.delay_seconds}s delay, Auto-Submit={data.auto_submit})"
+    )
+
+    cover_letter = (
+        f"Dear Hiring Team,\n\n"
+        f"I am writing to express my strong interest in this position. With over {int(profile.years_of_experience or 5)} years "
+        f"of experience building robust, scalable applications, I am confident in my ability to make an immediate positive impact.\n\n"
+        f"Sincerely,\n{profile.full_name}"
+    )
+
+    result = await execute_linkedin_auto_search_and_apply(
+        keywords=data.keywords,
+        location=data.location,
+        profile=profile,
+        resume_path=resume_path,
+        cover_letter=cover_letter,
+        max_jobs=max(1, min(data.max_jobs, 25)),
+        delay_seconds=max(1.0, min(data.delay_seconds, 30.0)),
+        auto_submit=data.auto_submit,
+    )
+
+    return {
+        "success": True,
+        "result": result,
+    }
+
+
+@router.post("/universal/auto-apply")
+async def start_universal_auto_apply(
+    data: UniversalAutoApplyRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Launch visible desktop Playwright browser session across ANY job portal (LinkedIn, Indeed, Naukri, or Multi-Portal).
+    Leverages persistent browser session (already logged in) to search, filter by 1-click/Easy Apply,
+    and apply non-stop with user-configured anti-ban delays and cooldown breathers.
+    """
+    profile = db.query(CandidateProfile).first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile is missing. Please save candidate profile first.")
+
+    primary_resume = db.query(ResumeVersion).filter(ResumeVersion.is_primary == True).first()
+    if not primary_resume:
+        primary_resume = db.query(ResumeVersion).first()
+
+    resume_path = primary_resume.file_path if primary_resume else None
+
+    log_activity(
+        db, "ACTION", "UNIVERSAL_AUTOPILOT_START",
+        f"Launching Universal Auto-Pilot on '{data.platform.upper()}': '{data.keywords}' in '{data.location}' (Max {data.max_jobs} jobs, {data.delay_seconds}s delay, Non-Stop={data.non_stop})"
+    )
+
+    cover_letter = (
+        f"Dear Hiring Team,\n\n"
+        f"I am writing to express my strong interest in this position. With over {int(profile.years_of_experience or 5)} years "
+        f"of experience building robust, scalable applications, I am eager to contribute.\n\n"
+        f"Sincerely,\n{profile.full_name}"
+    )
+
+    result = await execute_universal_job_search_and_apply(
+        platform=data.platform,
+        keywords=data.keywords,
+        location=data.location,
+        profile=profile,
+        resume_path=resume_path,
+        cover_letter=cover_letter,
+        max_jobs=max(1, min(data.max_jobs, 50 if data.non_stop else 25)),
+        delay_seconds=max(1.0, min(data.delay_seconds, 30.0)),
+        auto_submit=data.auto_submit,
+        non_stop=data.non_stop,
+    )
+
+    return {
+        "success": True,
+        "platform": data.platform,
+        "result": result,
     }
 
 

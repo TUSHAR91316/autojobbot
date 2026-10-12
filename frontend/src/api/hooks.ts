@@ -536,6 +536,76 @@ export const useAppMutations = () => {
     },
   });
 
+  const applyLinkedInAutoSearch = useMutation({
+    mutationFn: async ({
+      keywords = "Python Developer",
+      location = "Bengaluru, Karnataka, India",
+      maxJobs = 5,
+      delaySeconds = 4,
+      autoSubmit = true,
+    }: {
+      keywords?: string;
+      location?: string;
+      maxJobs?: number;
+      delaySeconds?: number;
+      autoSubmit?: boolean;
+    }) => {
+      const res = await apiClient.post("/automation/linkedin/auto-apply", {
+        keywords,
+        location,
+        max_jobs: maxJobs,
+        delay_seconds: delaySeconds,
+        auto_submit: autoSubmit,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
+  const applyUniversalAutoPilot = useMutation({
+    mutationFn: async ({
+      platform = "linkedin",
+      keywords = "Python Developer",
+      location = "Bengaluru, Karnataka, India",
+      maxJobs = 5,
+      delaySeconds = 4,
+      autoSubmit = true,
+      nonStop = false,
+    }: {
+      platform?: string;
+      keywords?: string;
+      location?: string;
+      maxJobs?: number;
+      delaySeconds?: number;
+      autoSubmit?: boolean;
+      nonStop?: boolean;
+    }) => {
+      const res = await apiClient.post("/automation/universal/auto-apply", {
+        platform,
+        keywords,
+        location,
+        max_jobs: maxJobs,
+        delay_seconds: delaySeconds,
+        auto_submit: autoSubmit,
+        non_stop: nonStop,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["automation-status"] });
+    },
+  });
+
   return {
     updateProfile,
     uploadResume,
@@ -568,5 +638,7 @@ export const useAppMutations = () => {
     openPortalLogin,
     connectChromeCdp,
     applyMultiTabInBrowser,
+    applyLinkedInAutoSearch,
+    applyUniversalAutoPilot,
   };
 };
